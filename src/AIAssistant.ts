@@ -84,15 +84,10 @@ class AIAssistant {
     private getContextStep(): { searchResult: (input: SequenceInput) => Promise<SearchResult>; originalQuestion: (input: SequenceInput) => string } {
         return {
             searchResult: async (input: SequenceInput) => {
-                console.info("\n\n[GetContextStep]");
                 const query = input.followUpQuery || input.originalQuestion;
                 input.searchHistory.push(query);
                 const context = await this.qdrantVectorDB.searchStore(query);
                 const contextAsString = JSON.stringify(context);
-                console.info(`Searched context with query "${query}" and found:\n${JSON.stringify(context, null, 2)}`);
-                console.info(`Context as string:\n${contextAsString}`);
-                console.info(`Original question: ${input.originalQuestion}`);
-                console.info(`Search history: ${input.searchHistory}`);
                 return {
                     searchHistory: input.searchHistory,
                     context: contextAsString,
