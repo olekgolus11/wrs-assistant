@@ -42,6 +42,11 @@ class QDrantVectorDB {
         const results = await this.store.similaritySearch(query, 2);
         return results;
     }
+
+    async searchStore(query: string) {
+        const results = await this.store.similaritySearch(query, 3);
+        return results;
+    }
 }
 
 export default QDrantVectorDB;

@@ -25,7 +25,7 @@ healthcheckRouter.get("/", (ctx) => {
 
 assistantRouter.post("/assistant", async (ctx) => {
     const { prompt } = await ctx.request.body.json();
-    const response = await assistant.getTestResponse(prompt);
+    const response = await assistant.askQuestion(prompt);
     ctx.response.body = response;
     ctx.response.status = STATUS_CODE.OK;
 });
@@ -36,6 +36,7 @@ app.use(v1.routes(), v1.allowedMethods());
 app.use(healthcheckRouter.routes());
 
 await app.listen({ port: 3000 });
+console.log("Server running on port 3000");
 
 // Run the server with the command:
 // deno run --watch --env --allow-all app.ts
