@@ -8,8 +8,8 @@ import { StructuredOutputParser } from "https://esm.sh/v135/@langchain/core@0.3.
 const AnswerSchema = z.object({
     answer: z.string().describe("Bezpośrednia odpowiedź na pytanie"),
     reasoning: z.string().describe("Wyjaśnienie, jak odpowiedź została wyprowadzona z kontekstu"),
-    needs_more_context: z.boolean().describe("Wskazuje, czy potrzebne jest dodatkowe wyszukiwanie kontekstu"),
-    follow_up_query: z.string().optional().describe("Dodatkowe zapytanie wyszukiwania, jeśli potrzebny jest więcej kontekstu"),
+    needsMoreContext: z.boolean().describe("Wskazuje, czy potrzebne jest dodatkowe wyszukiwanie kontekstu"),
+    followUpQuery: z.string().optional().describe("Dodatkowe zapytanie wyszukiwania, jeśli potrzebny jest więcej kontekstu"),
 });
 
 const CritiqueSchema = z.object({
@@ -19,14 +19,19 @@ const CritiqueSchema = z.object({
 });
 
 type SequenceInput = {
-    question: string;
-    searchHistory?: string[];
+    originalQuestion: string;
+    searchHistory: string[];
+    followUpQuery?: string;
+};
+
+type SearchResult = {
+    searchHistory: string[];
+    context: string;
 };
 
 type ResponseStepInput = {
-    question: string;
-    context: string;
-    searchHistory: string[];
+    searchResult: SearchResult;
+    originalQuestion: string;
 };
 
 type CritiqueStepInput = {
@@ -46,7 +51,7 @@ const answerPrompt = ChatPromptTemplate.fromMessages([
     [
         "system",
         `Jesteś pomocnym asystentem uniwersyteckim. Użyj poniższego kontekstu, aby odpowiedzieć na pytanie. 
-        Jeśli potrzebujesz więcej informacji, ustaw needs_more_context na true i podaj follow_up_query.
+        Jeśli potrzebujesz więcej informacji, ustaw needsMoreContext na true i podaj followUpQuery.
         Historia wyszukiwania pomoże Ci uniknąć powtarzania tych samych zapytań.`,
     ],
     ["system", "Musisz odpowiedzieć w następującym formacie:\n{format}"],
@@ -76,19 +81,24 @@ class AIAssistant {
         this.maxSearchIterations = 3;
     }
 
-    private getContextStep(): { context: (input: SequenceInput) => Promise<ResponseStepInput> } {
+    private getContextStep(): { searchResult: (input: SequenceInput) => Promise<SearchResult>; originalQuestion: (input: SequenceInput) => string } {
         return {
-            context: async (input: SequenceInput) => {
+            searchResult: async (input: SequenceInput) => {
                 console.info("\n\n[GetContextStep]");
-                const context = await this.qdrantVectorDB.searchStore(input.question);
+                const query = input.followUpQuery || input.originalQuestion;
+                input.searchHistory.push(query);
+                const context = await this.qdrantVectorDB.searchStore(query);
                 const contextAsString = JSON.stringify(context);
-                console.info(`Searched context with query "${input.question}" and found:\n${JSON.stringify(context, null, 2)}`);
+                console.info(`Searched context with query "${query}" and found:\n${JSON.stringify(context, null, 2)}`);
+                console.info(`Context as string:\n${contextAsString}`);
+                console.info(`Original question: ${input.originalQuestion}`);
+                console.info(`Search history: ${input.searchHistory}`);
                 return {
-                    question: input.question,
+                    searchHistory: input.searchHistory,
                     context: contextAsString,
-                    searchHistory: input.searchHistory || [],
                 };
             },
+            originalQuestion: (input: SequenceInput) => input.originalQuestion,
         };
     }
 
@@ -98,20 +108,18 @@ class AIAssistant {
     } {
         return {
             response: async (input: ResponseStepInput) => {
-                console.info("\n\n[GetResponseStep]");
                 const formattedPrompt = await answerPrompt.formatMessages({
                     format: answerParser.getFormatInstructions(),
-                    searchHistory: input.searchHistory?.join(", ") || "Brak",
-                    question: input.question,
-                    context: input.context,
+                    searchHistory: "Próbowałem wyszukać już: " + (input.searchResult?.searchHistory?.join(", ") || "Brak"),
+                    question: input.originalQuestion,
+                    context: input.searchResult.context,
                 });
 
                 const response = await this.openai.invoke(formattedPrompt);
                 const parsedResponse = await answerParser.parse(response.content as string);
-                console.info(`Received response from OpenAI:\n${parsedResponse}`);
                 return parsedResponse;
             },
-            originalQuestion: (input: ResponseStepInput) => input.question,
+            originalQuestion: (input: ResponseStepInput) => input.originalQuestion,
         };
     }
 
@@ -121,8 +129,6 @@ class AIAssistant {
     } {
         return {
             critique: async (input: CritiqueStepInput): Promise<CritiqueResponse> => {
-                console.info("\n\n[GetCritiqueStep]");
-                console.info(`Answer: ${input.response.answer}`);
                 const formattedPrompt = await critiquePrompt.formatMessages({
                     format: critiqueParser.getFormatInstructions(),
                     question: input.originalQuestion,
@@ -132,7 +138,6 @@ class AIAssistant {
 
                 const response = await this.openai.invoke(formattedPrompt);
                 const parsedResponse = await critiqueParser.parse(response.content as string);
-                console.info(`Received critique from OpenAI:\n${parsedResponse}`);
                 return parsedResponse;
             },
             response: (input: CritiqueStepInput) => input.response,
@@ -149,23 +154,28 @@ class AIAssistant {
                 reasoning: result.response.reasoning,
                 critique: result.critique.critique,
                 confidence: result.critique.confidence,
-                needs_more_context: result.response.needs_more_context,
-                follow_up_query: result.response.follow_up_query,
+                needsMoreContext: result.response.needsMoreContext,
+                followUpQuery: result.response.followUpQuery,
                 improvement_suggestions: result.critique.improvement_suggestions,
             }),
         ]);
     }
 
-    private async processQuestionWithContext(question: string, searchHistory: string[] = [], iteration = 0): Promise<AssistantResponse> {
+    private async processQuestionWithContext(
+        originalQuestion: string,
+        searchHistory: string[] = [],
+        iteration = 0,
+        followUpQuery?: string
+    ): Promise<AssistantResponse> {
         const chain = this.createAnswerChain();
         const response = await chain.invoke({
-            question,
+            originalQuestion,
+            followUpQuery,
             searchHistory,
         });
 
-        if (response.needs_more_context && response.follow_up_query && iteration < this.maxSearchIterations) {
-            const updatedHistory = [...searchHistory, response.follow_up_query];
-            return this.processQuestionWithContext(question, updatedHistory, iteration + 1);
+        if (response.needsMoreContext && response.followUpQuery && iteration < this.maxSearchIterations) {
+            return this.processQuestionWithContext(originalQuestion, searchHistory, iteration + 1, response.followUpQuery);
         }
 
         return response;
