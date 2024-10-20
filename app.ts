@@ -35,8 +35,8 @@ v1.use("/v1", assistantRouter.routes(), assistantRouter.allowedMethods());
 app.use(v1.routes(), v1.allowedMethods());
 app.use(healthcheckRouter.routes());
 
+console.info("Server running on port 3000");
 await app.listen({ port: 3000 });
-console.log("Server running on port 3000");
 
 // Run the server with the command:
 // deno run --watch --env --allow-all app.ts

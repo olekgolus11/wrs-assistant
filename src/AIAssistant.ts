@@ -18,11 +18,46 @@ const CritiqueSchema = z.object({
     improvement_suggestions: z.array(z.string()).describe("Lista konkretnych sugestii dotyczących poprawy odpowiedzi"),
 });
 
-type UniversityQuery = {
+type SequenceInput = {
     question: string;
-    context?: string;
     searchHistory?: string[];
 };
+
+type ResponseStepInput = {
+    question: string;
+    context: string;
+    searchHistory: string[];
+};
+
+type CritiqueStepInput = {
+    response: AnswerResponse;
+    originalQuestion: string;
+};
+
+type SequenceResult = {
+    response: AnswerResponse;
+    critique: CritiqueResponse;
+};
+
+const answerParser = StructuredOutputParser.fromZodSchema(AnswerSchema);
+const critiqueParser = StructuredOutputParser.fromZodSchema(CritiqueSchema);
+
+const answerPrompt = ChatPromptTemplate.fromMessages([
+    [
+        "system",
+        `Jesteś pomocnym asystentem uniwersyteckim. Użyj poniższego kontekstu, aby odpowiedzieć na pytanie. 
+        Jeśli potrzebujesz więcej informacji, ustaw needs_more_context na true i podaj follow_up_query.
+        Historia wyszukiwania pomoże Ci uniknąć powtarzania tych samych zapytań.`,
+    ],
+    ["system", "Musisz odpowiedzieć w następującym formacie:\n{format}"],
+    ["user", "Historia wyszukiwania: {searchHistory}\nKontekst: {context}\n\nPytanie: {question}"],
+]);
+
+const critiquePrompt = ChatPromptTemplate.fromMessages([
+    ["system", "Przeanalizuj poniższą odpowiedź pod kątem dokładności, kompletności i potencjalnych ulepszeń."],
+    ["system", "Musisz odpowiedzieć w następującym formacie:\n{format}"],
+    ["user", "Pytanie: {question}\nOdpowiedź: {answer}\nUzasadnienie: {reasoning}"],
+]);
 
 type AnswerResponse = z.infer<typeof AnswerSchema>;
 type CritiqueResponse = z.infer<typeof CritiqueSchema>;
@@ -41,85 +76,96 @@ class AIAssistant {
         this.maxSearchIterations = 3;
     }
 
-    private createAnswerChain() {
-        const answerParser = StructuredOutputParser.fromZodSchema(AnswerSchema);
-        const critiqueParser = StructuredOutputParser.fromZodSchema(CritiqueSchema);
+    private getContextStep(): { context: (input: SequenceInput) => Promise<ResponseStepInput> } {
+        return {
+            context: async (input: SequenceInput) => {
+                console.info("\n\n[GetContextStep]");
+                const context = await this.qdrantVectorDB.searchStore(input.question);
+                const contextAsString = JSON.stringify(context);
+                console.info(`Searched context with query "${input.question}" and found:\n${JSON.stringify(context, null, 2)}`);
+                return {
+                    question: input.question,
+                    context: contextAsString,
+                    searchHistory: input.searchHistory || [],
+                };
+            },
+        };
+    }
 
-        const answerPrompt = ChatPromptTemplate.fromMessages([
-            [
-                "system",
-                `Jesteś pomocnym asystentem uniwersyteckim. Użyj poniższego kontekstu, aby odpowiedzieć na pytanie. 
-                Jeśli potrzebujesz więcej informacji, ustaw needs_more_context na true i podaj follow_up_query.
-                Historia wyszukiwania pomoże Ci uniknąć powtarzania tych samych zapytań.`,
-            ],
-            ["system", "Musisz odpowiedzieć w następującym formacie:\n{format}"],
-            ["user", "Historia wyszukiwania: {searchHistory}\nKontekst: {context}\n\nPytanie: {question}"],
-        ]);
+    private getResponseStep(): {
+        response: (input: ResponseStepInput) => Promise<AnswerResponse>;
+        originalQuestion: (input: ResponseStepInput) => string;
+    } {
+        return {
+            response: async (input: ResponseStepInput) => {
+                console.info("\n\n[GetResponseStep]");
+                const formattedPrompt = await answerPrompt.formatMessages({
+                    format: answerParser.getFormatInstructions(),
+                    searchHistory: input.searchHistory?.join(", ") || "Brak",
+                    question: input.question,
+                    context: input.context,
+                });
 
-        const critiquePrompt = ChatPromptTemplate.fromMessages([
-            ["system", "Przeanalizuj poniższą odpowiedź pod kątem dokładności, kompletności i potencjalnych ulepszeń."],
-            ["system", "Musisz odpowiedzieć w następującym formacie:\n{format}"],
-            ["user", "Pytanie: {question}\nOdpowiedź: {answer}\nUzasadnienie: {reasoning}"],
-        ]);
+                const response = await this.openai.invoke(formattedPrompt);
+                const parsedResponse = await answerParser.parse(response.content as string);
+                console.info(`Received response from OpenAI:\n${parsedResponse}`);
+                return parsedResponse;
+            },
+            originalQuestion: (input: ResponseStepInput) => input.question,
+        };
+    }
 
+    private getCritiqueStep(): {
+        critique: (input: CritiqueStepInput) => Promise<CritiqueResponse>;
+        response: (input: CritiqueStepInput) => AnswerResponse;
+    } {
+        return {
+            critique: async (input: CritiqueStepInput): Promise<CritiqueResponse> => {
+                console.info("\n\n[GetCritiqueStep]");
+                console.info(`Answer: ${input.response.answer}`);
+                const formattedPrompt = await critiquePrompt.formatMessages({
+                    format: critiqueParser.getFormatInstructions(),
+                    question: input.originalQuestion,
+                    answer: input.response.answer,
+                    reasoning: input.response.reasoning,
+                });
+
+                const response = await this.openai.invoke(formattedPrompt);
+                const parsedResponse = await critiqueParser.parse(response.content as string);
+                console.info(`Received critique from OpenAI:\n${parsedResponse}`);
+                return parsedResponse;
+            },
+            response: (input: CritiqueStepInput) => input.response,
+        };
+    }
+
+    private createAnswerChain(): RunnableSequence<SequenceInput, AssistantResponse> {
         return RunnableSequence.from([
-            {
-                initialResponse: async (input: UniversityQuery) => {
-                    const formattedPrompt = await answerPrompt.formatMessages({
-                        format: answerParser.getFormatInstructions(),
-                        searchHistory: input.searchHistory?.join(", ") || "Brak",
-                        ...input,
-                    });
-
-                    const response = await this.openai.invoke(formattedPrompt);
-                    return answerParser.parse(response.content as string);
-                },
-                originalInput: (input: UniversityQuery) => input,
-            },
-            {
-                critique: async (input) => {
-                    const formattedPrompt = await critiquePrompt.formatMessages({
-                        format: critiqueParser.getFormatInstructions(),
-                        question: input.originalInput.question,
-                        answer: input.initialResponse.answer,
-                        reasoning: input.initialResponse.reasoning,
-                    });
-
-                    const response = await this.openai.invoke(formattedPrompt);
-                    return critiqueParser.parse(response.content as string);
-                },
-                answer: (input) => input.initialResponse,
-            },
-            (input): AssistantResponse => ({
-                ...input.answer,
-                ...input.critique,
+            this.getContextStep(),
+            this.getResponseStep(),
+            this.getCritiqueStep(),
+            (result: SequenceResult): AssistantResponse => ({
+                answer: result.response.answer,
+                reasoning: result.response.reasoning,
+                critique: result.critique.critique,
+                confidence: result.critique.confidence,
+                needs_more_context: result.response.needs_more_context,
+                follow_up_query: result.response.follow_up_query,
+                improvement_suggestions: result.critique.improvement_suggestions,
             }),
         ]);
     }
 
-    private async retrieveContext(question: string) {
-        return await this.qdrantVectorDB.searchStore(question);
-    }
-
-    private async processQuestionWithContext(
-        question: string,
-        context: string,
-        searchHistory: string[] = [],
-        iteration = 0
-    ): Promise<AssistantResponse> {
+    private async processQuestionWithContext(question: string, searchHistory: string[] = [], iteration = 0): Promise<AssistantResponse> {
         const chain = this.createAnswerChain();
         const response = await chain.invoke({
             question,
-            context,
             searchHistory,
         });
 
         if (response.needs_more_context && response.follow_up_query && iteration < this.maxSearchIterations) {
-            const newContext = await this.retrieveContext(response.follow_up_query);
-            const updatedContext = `${context}\n\nDodatkowy kontekst:\n${JSON.stringify(newContext)}`;
             const updatedHistory = [...searchHistory, response.follow_up_query];
-
-            return this.processQuestionWithContext(question, updatedContext, updatedHistory, iteration + 1);
+            return this.processQuestionWithContext(question, updatedHistory, iteration + 1);
         }
 
         return response;
@@ -127,15 +173,7 @@ class AIAssistant {
 
     async askQuestion(question: string): Promise<AssistantResponse> {
         try {
-            const initialContext = await this.retrieveContext(question);
-            const contextAsString = JSON.stringify(initialContext);
-
-            const response = await this.processQuestionWithContext(question, contextAsString);
-
-            if (response.confidence < 50) {
-                throw new Error("Low confidence in answer. Please provide more specific information or rephrase the question.");
-            }
-
+            const response = await this.processQuestionWithContext(question);
             return response;
         } catch (error) {
             console.error("Error processing question:", error);
