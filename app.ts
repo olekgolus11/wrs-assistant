@@ -1,6 +1,6 @@
 import { Application, Router } from "jsr:@oak/oak";
 import { STATUS_CODE } from "jsr:@std/http";
-import AIAssistant from "./src/AIAssistant.ts";
+import AIAssistant from "./src/services/AIAssistant.ts";
 
 const app = new Application();
 const assistant = new AIAssistant();
