@@ -23,15 +23,17 @@ const answerPrompt = ChatPromptTemplate.fromMessages([
     [
         "system",
         `Jesteś pomocnym asystentem uniwersyteckim. Użyj poniższego kontekstu, aby odpowiedzieć na pytanie. 
-        Jeśli potrzebujesz więcej informacji, ustaw needsMoreContext na true i podaj followUpQuery.
-        Historia wyszukiwania pomoże Ci uniknąć powtarzania tych samych zapytań.`,
+        Jeśli potrzebujesz więcej informacji, ustaw needsMoreContext na true, inny asystent pomoże ci później dobrać odpowiednie pytanie do wyszukania.`,
     ],
     ["system", "Musisz odpowiedzieć w następującym formacie:\n{format}"],
     ["user", "Historia wyszukiwania: {searchHistory}\nKontekst: {context}\n\nPytanie: {question}"],
 ]);
 
 const critiquePrompt = ChatPromptTemplate.fromMessages([
-    ["system", "Przeanalizuj poniższą odpowiedź pod kątem dokładności, kompletności i potencjalnych ulepszeń."],
+    [
+        "system",
+        "Przeanalizuj poniższą odpowiedź pod kątem dokładności, kompletności i potencjalnych ulepszeń. Wyprowadź sugestie, na ich postawie zaproponuj followUpQuery. Historia wyszukiwania pomoże Ci uniknąć powtarzania tych samych zapytań.",
+    ],
     ["system", "Musisz odpowiedzieć w następującym formacie:\n{format}"],
     ["user", "Pytanie: {question}\nOdpowiedź: {answer}\nUzasadnienie: {reasoning}"],
 ]);
@@ -127,7 +129,7 @@ class AIAssistant {
                 critique: result.critique.critique,
                 confidence: result.critique.confidence,
                 needsMoreContext: result.response.needsMoreContext,
-                followUpQuery: result.response.followUpQuery,
+                followUpQuery: result.critique.followUpQuery,
                 improvement_suggestions: result.critique.improvement_suggestions,
             }),
         ]);
