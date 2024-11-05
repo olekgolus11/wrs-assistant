@@ -22,11 +22,6 @@ export type CritiqueStepInput = {
     originalQuestion: string;
 };
 
-export type SequenceResult = {
-    response: AnswerResponse;
-    critique: CritiqueResponse;
-};
-
 export type AnswerResponse = z.infer<typeof AnswerSchema>;
 export type CritiqueResponse = z.infer<typeof CritiqueSchema>;
 export type AssistantResponse = AnswerResponse & CritiqueResponse;

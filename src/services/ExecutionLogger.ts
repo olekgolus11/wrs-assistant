@@ -1,6 +1,5 @@
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import process from "node:process";
 import type { AssistantResponse } from "../types/index.ts";
 
 interface StepLog {
@@ -26,11 +25,10 @@ interface ExecutionLog {
 
 class ExecutionLogger {
     private logDirectory: string;
-    private currentLogs: Map<string, ExecutionLog>;
+    private executionLog: Record<string, any> = {};
 
     constructor() {
         this.logDirectory = "./logs";
-        this.currentLogs = new Map();
 
         // Ensure log directory exists
         if (!existsSync(this.logDirectory)) {
@@ -38,57 +36,36 @@ class ExecutionLogger {
         }
     }
 
-    startExecution(executionId: string, question: string): void {
-        this.currentLogs.set(executionId, {
+    startExecution(executionId: string, input: string) {
+        this.executionLog[executionId] = {
             executionId,
-            originalQuestion: question,
             startTime: performance.now(),
-            endTime: 0,
-            totalDuration: 0,
+            userQuestion: input,
             steps: [],
+        };
+    }
+
+    logStep(executionId: string, stepName: string, input: any, output: any) {
+        this.executionLog[executionId].steps.push({
+            stepName,
+            input,
+            output,
+            duration: performance.now() - this.executionLog[executionId].startTime,
         });
     }
 
-    async logStep(executionId: string, stepName: string, inputData: any, operation: () => Promise<any>): Promise<any> {
-        const log = this.currentLogs.get(executionId);
-        if (!log) throw new Error(`No log found for execution ${executionId}`);
+    endExecution(executionId: string, output?: any, error?: Error) {
+        this.executionLog[executionId].endTime = performance.now();
+        this.executionLog[executionId].output = output;
+        this.executionLog[executionId].error = error;
+        this.executionLog[executionId].totalDuration =
+            String((this.executionLog[executionId].endTime - this.executionLog[executionId].startTime) / 1000) + "s";
 
-        const stepLog: StepLog = {
-            stepName,
-            startTime: performance.now(),
-            endTime: 0,
-            duration: 0,
-            input: inputData,
-            output: null,
-        };
-
-        try {
-            const result = await operation();
-            stepLog.output = result;
-            stepLog.endTime = performance.now();
-            stepLog.duration = stepLog.endTime - stepLog.startTime;
-            log.steps.push(stepLog);
-            return result;
-        } catch (error) {
-            stepLog.error = error as Error;
-            stepLog.endTime = performance.now();
-            stepLog.duration = stepLog.endTime - stepLog.startTime;
-            log.steps.push(stepLog);
-            throw error;
-        }
+        this.saveLog(this.executionLog[executionId]);
     }
 
-    endExecution(executionId: string, finalResponse?: AssistantResponse, error?: Error): void {
-        const log = this.currentLogs.get(executionId);
-        if (!log) throw new Error(`No log found for execution ${executionId}`);
-
-        log.endTime = performance.now();
-        log.totalDuration = log.endTime - log.startTime;
-        log.finalResponse = finalResponse;
-        log.error = error;
-
-        // Save log to file
-        this.saveLog(log);
+    getLog(executionId: string) {
+        return this.executionLog[executionId];
     }
 
     private saveLog(log: ExecutionLog): void {
@@ -97,10 +74,6 @@ class ExecutionLogger {
 
         const logData = JSON.stringify(log, null, 2);
         writeFileSync(filepath, logData);
-    }
-
-    getExecutionLog(executionId: string): ExecutionLog | undefined {
-        return this.currentLogs.get(executionId);
     }
 }
 

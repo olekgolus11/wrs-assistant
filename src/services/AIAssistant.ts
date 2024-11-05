@@ -1,19 +1,9 @@
 import QDrantVectorDB from "./QdrantVectorDB.ts";
 import { ChatOpenAI } from "https://esm.sh/@langchain/openai@0.3.5";
 import { ChatPromptTemplate } from "https://esm.sh/@langchain/core@0.3.6/prompts.js";
-import { RunnableSequence } from "https://esm.sh/v135/@langchain/core@0.3.6/runnables.js";
 import { StructuredOutputParser } from "https://esm.sh/v135/@langchain/core@0.3.6/dist/output_parsers/structured.js";
 import { AnswerSchema, CritiqueSchema } from "../schemas/index.ts";
-import {
-    SequenceInput,
-    SearchResult,
-    ResponseStepInput,
-    AnswerResponse,
-    CritiqueStepInput,
-    CritiqueResponse,
-    AssistantResponse,
-    SequenceResult,
-} from "../types/index.ts";
+import { SequenceInput, ResponseStepInput, CritiqueStepInput, AssistantResponse } from "../types/index.ts";
 import ExecutionLogger from "./ExecutionLogger.ts";
 
 const answerParser = StructuredOutputParser.fromZodSchema(AnswerSchema);
@@ -53,86 +43,48 @@ class AIAssistant {
         this.logger = new ExecutionLogger();
     }
 
-    private getContextStep(executionId: string): {
-        searchResult: (input: SequenceInput) => Promise<SearchResult>;
-        originalQuestion: (input: SequenceInput) => string;
-    } {
+    private async getContextStep(executionId: string, input: SequenceInput) {
+        const query = input.followUpQuery || input.originalQuestion;
+        input.searchHistory.push(query);
+        const context = await this.qdrantVectorDB.searchStore(query);
+        const contextAsString = JSON.stringify(context);
+
+        this.logger.logStep(executionId, "getContextStep", input, context);
+
         return {
-            searchResult: (input: SequenceInput) => {
-                return this.logger.logStep(executionId, "get_context", { input }, async () => {
-                    const query = input.followUpQuery || input.originalQuestion;
-                    input.searchHistory.push(query);
-                    const context = await this.qdrantVectorDB.searchStore(query);
-                    const contextAsString = JSON.stringify(context);
-                    return {
-                        searchHistory: input.searchHistory,
-                        context: contextAsString,
-                    };
-                });
-            },
-            originalQuestion: (input: SequenceInput) => input.originalQuestion,
+            searchHistory: input.searchHistory,
+            context: contextAsString,
         };
     }
 
-    private getResponseStep(executionId: string): {
-        response: (input: ResponseStepInput) => Promise<AnswerResponse>;
-        originalQuestion: (input: ResponseStepInput) => string;
-    } {
-        return {
-            response: (input: ResponseStepInput) => {
-                return this.logger.logStep(executionId, "generate_response", { input }, async () => {
-                    const formattedPrompt = await answerPrompt.formatMessages({
-                        format: answerParser.getFormatInstructions(),
-                        searchHistory: "Próbowałem wyszukać już: " + (input.searchResult?.searchHistory?.join(", ") || "Brak"),
-                        question: input.originalQuestion,
-                        context: input.searchResult.context,
-                    });
+    private async getResponseStep(executionId: string, input: ResponseStepInput) {
+        const formattedPrompt = await answerPrompt.formatMessages({
+            format: answerParser.getFormatInstructions(),
+            searchHistory: "Próbowałem wyszukać już: " + (input.searchResult?.searchHistory?.join(", ") || "Brak"),
+            question: input.originalQuestion,
+            context: input.searchResult.context,
+        });
+        const response = await this.openai.invoke(formattedPrompt);
+        const parsedResponse = await answerParser.parse(response.content as string);
 
-                    const response = await this.openai.invoke(formattedPrompt);
-                    return await answerParser.parse(response.content as string);
-                });
-            },
-            originalQuestion: (input: ResponseStepInput) => input.originalQuestion,
-        };
+        this.logger.logStep(executionId, "getResponseStep", input, parsedResponse);
+
+        return parsedResponse;
     }
 
-    private getCritiqueStep(executionId: string): {
-        critique: (input: CritiqueStepInput) => Promise<CritiqueResponse>;
-        response: (input: CritiqueStepInput) => AnswerResponse;
-    } {
-        return {
-            critique: (input: CritiqueStepInput): Promise<CritiqueResponse> => {
-                return this.logger.logStep(executionId, "generate_critique", { input }, async () => {
-                    const formattedPrompt = await critiquePrompt.formatMessages({
-                        format: critiqueParser.getFormatInstructions(),
-                        question: input.originalQuestion,
-                        answer: input.response.answer,
-                        reasoning: input.response.reasoning,
-                    });
+    private async getCritiqueStep(executionId: string, input: CritiqueStepInput) {
+        const formattedPrompt = await critiquePrompt.formatMessages({
+            format: critiqueParser.getFormatInstructions(),
+            question: input.originalQuestion,
+            answer: input.response.answer,
+            reasoning: input.response.reasoning,
+        });
+        const response = await this.openai.invoke(formattedPrompt);
+        const parsedResponse = await critiqueParser.parse(response.content as string);
 
-                    const response = await this.openai.invoke(formattedPrompt);
-                    return await critiqueParser.parse(response.content as string);
-                });
-            },
-            response: (input: CritiqueStepInput) => input.response,
-        };
-    }
+        this.logger.logStep(executionId, "getCritiqueStep", input, parsedResponse);
 
-    private createAnswerChain(executionId: string): RunnableSequence<SequenceInput, AssistantResponse> {
-        return RunnableSequence.from([
-            this.getContextStep(executionId),
-            this.getResponseStep(executionId),
-            this.getCritiqueStep(executionId),
-            (result: SequenceResult): AssistantResponse => ({
-                answer: result.response.answer,
-                reasoning: result.response.reasoning,
-                critique: result.critique.critique,
-                confidence: result.critique.confidence,
-                needsMoreContext: result.response.needsMoreContext,
-                followUpQuery: result.critique.followUpQuery,
-                improvement_suggestions: result.critique.improvement_suggestions,
-            }),
-        ]);
+        return parsedResponse;
     }
 
     private async processQuestionWithContext(
@@ -142,18 +94,35 @@ class AIAssistant {
         iteration = 0,
         followUpQuery?: string
     ): Promise<AssistantResponse> {
-        const chain = this.createAnswerChain(executionId);
-        const response = await chain.invoke({
+        const context = await this.getContextStep(executionId, {
             originalQuestion,
             followUpQuery,
             searchHistory,
         });
 
-        if (response.needsMoreContext && response.followUpQuery && iteration < this.maxSearchIterations) {
-            return this.processQuestionWithContext(executionId, originalQuestion, searchHistory, iteration + 1, response.followUpQuery);
+        const response = await this.getResponseStep(executionId, {
+            originalQuestion,
+            searchResult: context,
+        });
+
+        const critique = await this.getCritiqueStep(executionId, {
+            originalQuestion,
+            response,
+        });
+
+        if (response.needsMoreContext && critique.followUpQuery && iteration < this.maxSearchIterations) {
+            return this.processQuestionWithContext(executionId, originalQuestion, searchHistory, iteration + 1, critique.followUpQuery);
         }
 
-        return response;
+        return {
+            answer: response.answer,
+            reasoning: response.reasoning,
+            critique: critique.critique,
+            confidence: critique.confidence,
+            needsMoreContext: response.needsMoreContext,
+            followUpQuery: critique.followUpQuery,
+            improvement_suggestions: critique.improvement_suggestions,
+        };
     }
 
     async askQuestion(question: string): Promise<AssistantResponse> {
