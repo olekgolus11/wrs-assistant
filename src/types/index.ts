@@ -4,7 +4,7 @@ import type { AnswerSchema, CritiqueSchema } from "../schemas/index.ts";
 export type SequenceInput = {
     originalQuestion: string;
     searchHistory: string[];
-    followUpQuery?: string;
+    followUp?: FollowUp;
 };
 
 export type SearchResult = {
@@ -15,11 +15,18 @@ export type SearchResult = {
 export type ResponseStepInput = {
     searchResult: SearchResult;
     originalQuestion: string;
+    followUp?: FollowUp;
 };
 
 export type CritiqueStepInput = {
     response: AnswerResponse;
     originalQuestion: string;
+};
+
+export type FollowUp = {
+    followUpQuestion: string;
+    previousAnswer: string;
+    improvementSuggestions: string[];
 };
 
 export type AnswerResponse = z.infer<typeof AnswerSchema>;

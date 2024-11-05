@@ -3,9 +3,11 @@ import { ChatOpenAI } from "https://esm.sh/@langchain/openai@0.3.5";
 import { ChatPromptTemplate } from "https://esm.sh/@langchain/core@0.3.6/prompts.js";
 import { StructuredOutputParser } from "https://esm.sh/v135/@langchain/core@0.3.6/dist/output_parsers/structured.js";
 import { AnswerSchema, CritiqueSchema } from "../schemas/index.ts";
-import { SequenceInput, ResponseStepInput, CritiqueStepInput, AssistantResponse } from "../types/index.ts";
+import { SequenceInput, ResponseStepInput, CritiqueStepInput, AssistantResponse, FollowUp } from "../types/index.ts";
 import ExecutionLogger from "./ExecutionLogger.ts";
+import { ContextSchema } from "../schemas/ContextSchema.ts";
 
+const contextParser = StructuredOutputParser.fromZodSchema(ContextSchema);
 const answerParser = StructuredOutputParser.fromZodSchema(AnswerSchema);
 const critiqueParser = StructuredOutputParser.fromZodSchema(CritiqueSchema);
 
@@ -22,10 +24,19 @@ const answerPrompt = ChatPromptTemplate.fromMessages([
 const critiquePrompt = ChatPromptTemplate.fromMessages([
     [
         "system",
-        "Przeanalizuj poniższą odpowiedź pod kątem dokładności, kompletności i potencjalnych ulepszeń. Wyprowadź sugestie, na ich postawie zaproponuj followUpQuery. Historia wyszukiwania pomoże Ci uniknąć powtarzania tych samych zapytań.",
+        "Przeanalizuj poniższą odpowiedź pod kątem dokładności, kompletności i potencjalnych ulepszeń. Wyprowadź sugestie, na ich postawie zaproponuj followUpQuestion. Historia wyszukiwania pomoże Ci uniknąć powtarzania tych samych zapytań.",
     ],
     ["system", "Musisz odpowiedzieć w następującym formacie:\n{format}"],
     ["user", "Pytanie: {question}\nOdpowiedź: {answer}\nUzasadnienie: {reasoning}"],
+]);
+
+const contextPrompt = ChatPromptTemplate.fromMessages([
+    [
+        "system",
+        "Zaproponuj kilka zapytań do bazy wektorowej, które mogą pomóc w znalezieniu odpowiedzi. Jeśli dostępne, skorzytaj z sugestii: {improvementSuggestions}",
+    ],
+    ["system", "Musisz odpowiedzieć w następującym formacie:\n{format}"],
+    ["user", "Pytanie: {question}"],
 ]);
 
 class AIAssistant {
@@ -43,24 +54,38 @@ class AIAssistant {
         this.logger = new ExecutionLogger();
     }
 
-    private async getContextStep(executionId: string, input: SequenceInput) {
-        const query = input.followUpQuery || input.originalQuestion;
-        input.searchHistory.push(query);
-        const context = await this.qdrantVectorDB.searchStore(query);
-        const contextAsString = JSON.stringify(context);
+    private async getContext(executionId: string, input: SequenceInput) {
+        const formattedPrompt = await contextPrompt.formatMessages({
+            format: contextParser.getFormatInstructions(),
+            question: input?.followUp?.followUpQuestion || input.originalQuestion,
+            improvementSuggestions: input?.followUp?.improvementSuggestions?.join(", ") || "Brak sugestii",
+        });
+        const response = await this.openai.invoke(formattedPrompt);
+        const parsedResponse = await contextParser.parse(response.content as string);
 
-        this.logger.logStep(executionId, "getContextStep", input, context);
+        const dbResults = await Promise.all(
+            parsedResponse.queries.map((query: string) => {
+                input.searchHistory.push(query);
+                return this.qdrantVectorDB.searchStore(query);
+            })
+        );
+        const context = JSON.stringify(dbResults);
+
+        this.logger.logStep(executionId, "getContextStep", input, dbResults);
 
         return {
             searchHistory: input.searchHistory,
-            context: contextAsString,
+            context,
         };
     }
 
-    private async getResponseStep(executionId: string, input: ResponseStepInput) {
+    private async getResponse(executionId: string, input: ResponseStepInput) {
         const formattedPrompt = await answerPrompt.formatMessages({
             format: answerParser.getFormatInstructions(),
-            searchHistory: "Próbowałem wyszukać już: " + (input.searchResult?.searchHistory?.join(", ") || "Brak"),
+            searchHistory:
+                "Próbowałem wyszukać już: " + (input.searchResult?.searchHistory?.join(", ") || "Brak") + input.followUp?.previousAnswer
+                    ? `Warto zaznaczyć, że ostatnio odpowiedziałem tak: ${input?.followUp?.previousAnswer}, ale poproszono mnie o więcej informacji.`
+                    : "",
             question: input.originalQuestion,
             context: input.searchResult.context,
         });
@@ -72,7 +97,7 @@ class AIAssistant {
         return parsedResponse;
     }
 
-    private async getCritiqueStep(executionId: string, input: CritiqueStepInput) {
+    private async getCritique(executionId: string, input: CritiqueStepInput) {
         const formattedPrompt = await critiquePrompt.formatMessages({
             format: critiqueParser.getFormatInstructions(),
             question: input.originalQuestion,
@@ -92,26 +117,30 @@ class AIAssistant {
         originalQuestion: string,
         searchHistory: string[] = [],
         iteration = 0,
-        followUpQuery?: string
+        followUp?: FollowUp
     ): Promise<AssistantResponse> {
-        const context = await this.getContextStep(executionId, {
+        const context = await this.getContext(executionId, {
             originalQuestion,
-            followUpQuery,
+            followUp,
             searchHistory,
         });
 
-        const response = await this.getResponseStep(executionId, {
+        const response = await this.getResponse(executionId, {
             originalQuestion,
             searchResult: context,
         });
 
-        const critique = await this.getCritiqueStep(executionId, {
+        const critique = await this.getCritique(executionId, {
             originalQuestion,
             response,
         });
 
-        if (response.needsMoreContext && critique.followUpQuery && iteration < this.maxSearchIterations) {
-            return this.processQuestionWithContext(executionId, originalQuestion, searchHistory, iteration + 1, critique.followUpQuery);
+        if ((response.needsMoreContext || critique.confidence < 80) && critique.followUpQuestion && iteration < this.maxSearchIterations) {
+            return this.processQuestionWithContext(executionId, originalQuestion, searchHistory, iteration + 1, {
+                followUpQuestion: critique.followUpQuestion,
+                previousAnswer: response.answer,
+                improvementSuggestions: critique.improvementSuggestions,
+            });
         }
 
         return {
@@ -120,8 +149,8 @@ class AIAssistant {
             critique: critique.critique,
             confidence: critique.confidence,
             needsMoreContext: response.needsMoreContext,
-            followUpQuery: critique.followUpQuery,
-            improvement_suggestions: critique.improvement_suggestions,
+            followUpQuestion: critique.followUpQuestion,
+            improvementSuggestions: critique.improvementSuggestions,
         };
     }
 
