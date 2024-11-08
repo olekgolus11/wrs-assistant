@@ -3,9 +3,11 @@ import { ChatOpenAI } from "https://esm.sh/@langchain/openai@0.3.5";
 import { ChatPromptTemplate } from "https://esm.sh/@langchain/core@0.3.6/prompts.js";
 import { StructuredOutputParser } from "https://esm.sh/v135/@langchain/core@0.3.6/dist/output_parsers/structured.js";
 import { AnswerSchema, CritiqueSchema } from "../schemas/index.ts";
-import { SequenceInput, ResponseStepInput, CritiqueStepInput, AssistantResponse, FollowUp } from "../types/index.ts";
+import { SequenceInput, ResponseStepInput, CritiqueStepInput, AssistantResponse, FollowUp, LangfuseSessionConfig } from "../types/index.ts";
 import ExecutionLogger from "./ExecutionLogger.ts";
 import { ContextSchema } from "../schemas/ContextSchema.ts";
+import { CallbackHandler, Langfuse } from "https://esm.sh/langfuse-langchain@3.29.1";
+import { LangfuseTraceClient } from "https://esm.sh/v135/langfuse-core@3.29.1/lib/index.d.mts";
 
 const contextParser = StructuredOutputParser.fromZodSchema(ContextSchema);
 const answerParser = StructuredOutputParser.fromZodSchema(AnswerSchema);
@@ -44,8 +46,22 @@ class AIAssistant {
     private qdrantVectorDB: QDrantVectorDB;
     private maxSearchIterations: number;
     private logger: ExecutionLogger;
+    private langfuseSessionConfig: LangfuseSessionConfig;
+    private sessionId: string;
 
     constructor() {
+        const langfuse = new Langfuse();
+        this.sessionId = `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+        this.langfuseSessionConfig = {
+            callbacks: [
+                new CallbackHandler({
+                    sessionId: this.sessionId,
+                    root: langfuse.trace(),
+                    updateRoot: true,
+                }),
+            ],
+        };
+
         this.openai = new ChatOpenAI({
             model: "gpt-4o-mini",
         });
@@ -60,7 +76,7 @@ class AIAssistant {
             question: input?.followUp?.followUpQuestion || input.originalQuestion,
             improvementSuggestions: input?.followUp?.improvementSuggestions?.join(", ") || "Brak sugestii",
         });
-        const response = await this.openai.invoke(formattedPrompt);
+        const response = await this.openai.invoke(formattedPrompt, this.langfuseSessionConfig);
         const parsedResponse = await contextParser.parse(response.content as string);
 
         const dbResults = await Promise.all(
@@ -83,13 +99,15 @@ class AIAssistant {
         const formattedPrompt = await answerPrompt.formatMessages({
             format: answerParser.getFormatInstructions(),
             searchHistory:
-                "Próbowałem wyszukać już: " + (input.searchResult?.searchHistory?.join(", ") || "Brak") + input.followUp?.previousAnswer
+                "Próbowałem wyszukać już: " +
+                (input.searchResult?.searchHistory?.join(", ") || "Jeszcze niczego nie wyszukiwałem") +
+                (input.followUp?.previousAnswer
                     ? `Warto zaznaczyć, że ostatnio odpowiedziałem tak: ${input?.followUp?.previousAnswer}, ale poproszono mnie o więcej informacji.`
-                    : "",
+                    : ""),
             question: input.originalQuestion,
             context: input.searchResult.context,
         });
-        const response = await this.openai.invoke(formattedPrompt);
+        const response = await this.openai.invoke(formattedPrompt, this.langfuseSessionConfig);
         const parsedResponse = await answerParser.parse(response.content as string);
 
         this.logger.logStep(executionId, "getResponseStep", input, parsedResponse);
@@ -104,7 +122,7 @@ class AIAssistant {
             answer: input.response.answer,
             reasoning: input.response.reasoning,
         });
-        const response = await this.openai.invoke(formattedPrompt);
+        const response = await this.openai.invoke(formattedPrompt, this.langfuseSessionConfig);
         const parsedResponse = await critiqueParser.parse(response.content as string);
 
         this.logger.logStep(executionId, "getCritiqueStep", input, parsedResponse);
@@ -135,7 +153,7 @@ class AIAssistant {
             response,
         });
 
-        if ((response.needsMoreContext || critique.confidence < 80) && critique.followUpQuestion && iteration < this.maxSearchIterations) {
+        if ((response.needsMoreContext || critique.confidence < 70) && critique.followUpQuestion && iteration < this.maxSearchIterations) {
             return this.processQuestionWithContext(executionId, originalQuestion, searchHistory, iteration + 1, {
                 followUpQuestion: critique.followUpQuestion,
                 previousAnswer: response.answer,
@@ -155,15 +173,14 @@ class AIAssistant {
     }
 
     async askQuestion(question: string): Promise<AssistantResponse> {
-        const executionId = `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
-        this.logger.startExecution(executionId, question);
+        this.logger.startExecution(this.sessionId, question);
 
         try {
-            const response = await this.processQuestionWithContext(executionId, question);
-            this.logger.endExecution(executionId, response);
+            const response = await this.processQuestionWithContext(this.sessionId, question);
+            this.logger.endExecution(this.sessionId, response);
             return response;
         } catch (error) {
-            this.logger.endExecution(executionId, undefined, error as Error);
+            this.logger.endExecution(this.sessionId, undefined, error as Error);
             throw error;
         }
     }
