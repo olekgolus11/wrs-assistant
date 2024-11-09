@@ -26,12 +26,14 @@ interface ExecutionLog {
 class ExecutionLogger {
     private logDirectory: string;
     private executionLog: Record<string, any> = {};
+    private isLocal: boolean;
 
     constructor() {
         this.logDirectory = "./logs";
+        this.isLocal = Deno.env.get("IS_LOCAL") === "true";
 
         // Ensure log directory exists
-        if (!existsSync(this.logDirectory)) {
+        if (this.isLocal && !existsSync(this.logDirectory)) {
             mkdirSync(this.logDirectory, { recursive: true });
         }
     }
@@ -73,7 +75,7 @@ class ExecutionLogger {
         const filepath = join(this.logDirectory, filename);
 
         const logData = JSON.stringify(log, null, 2);
-        writeFileSync(filepath, logData);
+        this.isLocal ? writeFileSync(filepath, logData) : console.info(logData);
     }
 }
 

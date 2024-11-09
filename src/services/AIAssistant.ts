@@ -7,7 +7,6 @@ import { SequenceInput, ResponseStepInput, CritiqueStepInput, AssistantResponse,
 import ExecutionLogger from "./ExecutionLogger.ts";
 import { ContextSchema } from "../schemas/ContextSchema.ts";
 import { CallbackHandler, Langfuse } from "https://esm.sh/langfuse-langchain@3.29.1";
-import { LangfuseTraceClient } from "https://esm.sh/v135/langfuse-core@3.29.1/lib/index.d.mts";
 
 const contextParser = StructuredOutputParser.fromZodSchema(ContextSchema);
 const answerParser = StructuredOutputParser.fromZodSchema(AnswerSchema);
