@@ -3,9 +3,9 @@ import AIAssistant from "../../services/AIAssistant.ts";
 import { Context } from "jsr:@oak/oak";
 
 export const askQuestion = async (ctx: Context) => {
-    const assistant = new AIAssistant();
     const { prompt } = await ctx.request.body.json();
-    const response = await assistant.askQuestion(prompt);
+    const assistant = new AIAssistant(prompt);
+    const response = await assistant.askQuestion();
     ctx.response.body = response;
     ctx.response.status = STATUS_CODE.OK;
 };
