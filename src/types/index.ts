@@ -34,7 +34,8 @@ export type FollowUp = {
 export type AnswerResponse = z.infer<typeof AnswerSchema>;
 export type CritiqueResponse = z.infer<typeof CritiqueSchema>;
 export type AssistantResponse = AnswerResponse & CritiqueResponse;
-export type QuickAssistantResponse = z.infer<typeof QuickAnswerSchema>;
+export type NoAssistantResponse = Partial<AssistantResponse>;
+export type QuickAssistantResponse = z.infer<typeof QuickAnswerSchema> & { questionType: QuestionEvaluationType };
 
 export type LangfuseSessionConfig = {
     callbacks: CallbackHandler[];
