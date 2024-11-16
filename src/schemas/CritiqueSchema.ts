@@ -4,26 +4,26 @@ export const CritiqueSchema = z.object({
     critique: z
         .string()
         .describe(
-            "Krytyczna analiza odpowiedzi w kontekście pytania powiązanego z wydziałem WEEIA Politechniki Łódzkiej. Odpowiedź również jest poparta uzasadnieniem, w celu lepszego zrozumienia przez ciebie."
+            "Krytyczna analiza odpowiedzi w kontekście pytania powiązanego z wydziałem WEEIA Politechniki Łódzkiej. Odpowiedź również jest poparta uzasadnieniem, w celu lepszego zrozumienia przez ciebie. Nie przesadzaj z wymaganą ilością szczegółów. Jeżeli uzasadnienie odwołuje się do kontekstu, to jest ono poprawne i wystarczające.",
         ),
     confidence: z
         .number()
         .min(0)
         .max(100)
         .describe(
-            "Wskaźnik pewności od 0 do 100. Pewna wiadomość to taka, która odpowiada celnie na pytanie, bez zbędnego przedłużania, bez dodatkowych informacji. Jeżeli uzasadnienie odwołuje się do kontekstu, to jest ono poprawne."
+            "Wskaźnik pewności od 0 do 100. Pewna wiadomość to taka, która odpowiada celnie na pytanie, bez zbędnego przedłużania, bez zbędnych dodatkowych informacji. Jeżeli uzasadnienie odwołuje się do kontekstu, to jest ono poprawne i wystarczające.",
         ),
     improvementSuggestions: z
         .array(z.string())
         .describe(
-            "WAŻNE: Pozostaw to pole puste (nie generuj go wcale) jeśli wskaźnik pewności jest >= 75. Lista konkretnych sugestii dotyczących poprawy odpowiedzi."
+            "WAŻNE: Pozostaw to pole puste (nie generuj go wcale) jeśli wskaźnik pewności jest >= 75. Lista konkretnych sugestii dotyczących poprawy odpowiedzi.",
         )
         .optional(),
     followUpQuestion: z
         .string()
         .optional()
         .describe(
-            "WAŻNE: Pozostaw to pole puste (nie generuj go wcale) jeśli wskaźnik pewności jest >= 75. Dodatkowe zapytanie wyszukiwania by poprawić odpowiedź o brakujący kontekst."
+            "WAŻNE: Pozostaw to pole puste (nie generuj go wcale) jeśli wskaźnik pewności jest >= 75. Dodatkowe zapytanie wyszukiwania by poprawić odpowiedź o brakujący kontekst.",
         )
         .optional(),
 });

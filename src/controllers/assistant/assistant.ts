@@ -5,7 +5,8 @@ import { Context } from "jsr:@oak/oak";
 export const askQuestion = async (ctx: Context) => {
     const { prompt } = await ctx.request.body.json();
     const assistant = new AIAssistant(prompt);
-    const { quickResponsePromise, responsePromise } = await assistant.askQuestion();
+    const { quickResponsePromise, responsePromise } = await assistant
+        .askQuestion();
 
     // Set headers for streaming
     ctx.response.status = STATUS_CODE.OK;
@@ -22,13 +23,18 @@ export const askQuestion = async (ctx: Context) => {
                 // Send the quick response (serialized as JSON)
                 quickResponse = await quickResponsePromise;
                 console.log(quickResponse);
-                controller.enqueue(new TextEncoder().encode(JSON.stringify(quickResponse) + "\n"));
+                controller.enqueue(
+                    new TextEncoder().encode(
+                        JSON.stringify(quickResponse) + "\n",
+                    ),
+                );
 
                 // Then send the full response (serialized as JSON)
                 response = await responsePromise;
                 console.log(response);
-                await new Promise((resolve) => setTimeout(resolve, 3000));
-                controller.enqueue(new TextEncoder().encode(JSON.stringify(response) + "\n"));
+                controller.enqueue(
+                    new TextEncoder().encode(JSON.stringify(response) + "\n"),
+                );
 
                 // Close the stream when all data is sent
                 await Promise.all([
