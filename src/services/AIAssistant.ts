@@ -126,7 +126,7 @@ class AIAssistant {
     }
 
     async askQuestion(): Promise<{
-        responsePromise: Promise<AssistantResponse | NoAssistantResponse>;
+        responsePromise: Promise<AssistantResponse | null>;
         quickResponsePromise: Promise<QuickAssistantResponse>;
     }> {
         this.logger.startExecution(this.sessionId, this.question);
@@ -155,9 +155,9 @@ class AIAssistant {
                         this.question,
                         this.questionType,
                     );
-                    responsePromise = new Promise<{ answer: undefined }>((
+                    responsePromise = new Promise<null>((
                         resolve,
-                    ) => resolve({ answer: undefined }));
+                    ) => resolve(null));
                     break;
                 default:
                     throw new Error(
@@ -180,9 +180,7 @@ class AIAssistant {
                 quickResponsePromise: new Promise((resolve) =>
                     resolve(response)
                 ),
-                responsePromise: new Promise((resolve) =>
-                    resolve({ answer: undefined })
-                ),
+                responsePromise: new Promise((resolve) => resolve(null)),
             };
         }
     }
