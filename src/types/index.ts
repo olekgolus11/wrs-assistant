@@ -7,6 +7,21 @@ import type {
 import CallbackHandler from "https://esm.sh/v135/langfuse-langchain@3.29.1/lib/index.d.mts";
 import { LangfuseTraceClient } from "https://esm.sh/v135/langfuse-core@3.29.1/lib/index.d.mts";
 
+export type QdrantDocument = {
+    id: string;
+    version: number;
+    score: number;
+    payload: QdrantDocumentPayload;
+};
+
+export type QdrantDocumentPayload = {
+    title: string;
+    textContent: string;
+    category: string;
+    url: string;
+    date: string;
+};
+
 export type SequenceInput = {
     originalQuestion: string;
     searchHistory: string[];
@@ -15,7 +30,7 @@ export type SequenceInput = {
 
 export type SearchResult = {
     searchHistory: string[];
-    context: string;
+    context: QdrantDocument[];
 };
 
 export type ResponseStepInput = {

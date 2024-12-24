@@ -1,7 +1,7 @@
 import { OpenAIEmbeddings } from "https://esm.sh/@langchain/openai@0.3.5";
 import process from "node:process";
 import { QdrantClient } from "https://esm.sh/@qdrant/js-client-rest@1.12.0";
-import { ScrapedArticle } from "../types/index.ts";
+import { QdrantDocument, ScrapedArticle } from "../types/index.ts";
 import { createHash } from "node:crypto";
 
 class QDrantVectorDB {
@@ -33,7 +33,7 @@ class QDrantVectorDB {
         });
     }
 
-    async searchStore(query: string) {
+    async searchStore(query: string): Promise<QdrantDocument[]> {
         const results = await this.store.search(this.collectionName, {
             vector: await this.embeddings.embedQuery(query),
             limit: 2,

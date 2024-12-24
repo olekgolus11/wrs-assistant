@@ -4,6 +4,6 @@ export const QuickAnswerSchema = z.object({
     answer: z
         .string()
         .describe(
-            "Bezpośrednia odpowiedź na pytanie użytkownika. Ma być krótka i zwięzła, tak aby użytkownik mógł szybko zrozumieć odpowiedź. Jeśli nie znasz odpowiedzi na pytanie, powiedz o tym wprost."
+            "Szybka, przyjazna odpowiedź dla rozmówcy! 🎓 Jeśli to pytanie wymagające researchu, dam znać że poszukam informacji. Przy luźnej rozmowie będę bardziej swobodny. Zawsze zachowuję pomocny i przyjazny ton, nawet gdy ktoś próbuje mnie przechytrzyć 😉 Jeśli czegoś nie rozumiem, grzecznie poproszę o wyjaśnienie!",
         ),
 });

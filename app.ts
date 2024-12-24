@@ -13,4 +13,4 @@ app.use(v1.routes(), v1.allowedMethods());
 app.use(healthcheckRouter.routes(), healthcheckRouter.allowedMethods());
 
 console.info("Server running on port 3000");
-await app.listen({ port: 3000 });
+await app.listen({ port: 3001 });

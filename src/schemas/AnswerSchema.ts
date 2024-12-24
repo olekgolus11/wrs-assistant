@@ -4,14 +4,16 @@ export const AnswerSchema = z.object({
     answer: z
         .string()
         .describe(
-            "Bezpośrednia odpowiedź na pytanie użytkownika. Poprzyj szczegółami jeśli uważasz, że są one istotne. Jeśli nie znasz odpowiedzi na pytanie, powiedz o tym wprost.",
+            "Odpowiedź musi być przede wszystkim PRECYZYJNA i zgodna z dostarczonym kontekstem! 🎓 Szczególną uwagę zwracam na poprawność nazw, skrótów i określeń związanych z WEEIA. Zachowuję przyjazny ton, ale nigdy kosztem dokładności informacji. Jeśli czegoś nie jestem pewien na podstawie kontekstu, otwarcie to komunikuję.",
         ),
-    reasoning: z.string().describe(
-        "Wyjaśnienie, jak odpowiedź została wyprowadzona z kontekstu",
-    ),
+    reasoning: z
+        .string()
+        .describe(
+            "Szczegółowe wyjaśnienie, jak odpowiedź została wyprowadzona Z DOSTARCZONEGO KONTEKSTU. Pokazuję dokładnie, które informacje z kontekstu wykorzystałem. Jeśli jakaś część odpowiedzi nie wynika bezpośrednio z kontekstu, wyraźnie to zaznaczam.",
+        ),
     needsMoreContext: z
         .boolean()
         .describe(
-            "Wskazuje, czy potrzebne jest dodatkowe wyszukiwanie kontekstu. Jeśli uważasz, że historia wyszukiwania nie jest wystarczająca, ustaw na true. Natomiast, jeśli widzisz, że podjęto już próby znalezienia odpowiedzi, ustaw na false.",
+            "Czy potrzebuję więcej informacji z oficjalnych źródeł? True = brakuje mi pewnych informacji lub nie jestem pewien ich aktualności. False = mam wystarczające i wiarygodne informacje z dostarczonego kontekstu.",
         ),
 });
