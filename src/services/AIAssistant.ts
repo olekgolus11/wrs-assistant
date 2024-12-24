@@ -14,10 +14,10 @@ import {
     CallbackHandlerConfig,
     CritiqueStepInput,
     FollowUp,
-    NoAssistantResponse,
     QuestionEvaluationType,
     QuickAssistantResponse,
     ResponseStepInput,
+    SearchResult,
     SequenceInput,
 } from "../types/index.ts";
 import ExecutionLogger from "./ExecutionLogger.ts";
@@ -58,7 +58,7 @@ const critiquePrompt = ChatPromptTemplate.fromMessages([
     ["system", "Musisz odpowiedzieć w następującym formacie:\n{format}"],
     [
         "user",
-        "Pytanie: {question}\nOdpowiedź: {answer}\nUzasadnienie: {reasoning}",
+        "Pytanie: {question}\nOdpowiedź: {answer}\nUzasadnienie: {reasoning}\nDostarczony kontekst: {searchResult}",
     ],
 ]);
 
@@ -271,6 +271,7 @@ class AIAssistant {
         const critique = await this.getCritique(executionId, {
             originalQuestion,
             response,
+            searchResult: context,
         });
 
         if (
@@ -306,7 +307,10 @@ class AIAssistant {
         return wholeResponse;
     }
 
-    private async getContext(executionId: string, input: SequenceInput) {
+    private async getContext(
+        executionId: string,
+        input: SequenceInput,
+    ): Promise<SearchResult> {
         let dbResults;
 
         const vectorDBSpan = this.parentTrace.span({
@@ -402,12 +406,16 @@ class AIAssistant {
         return parsedResponse;
     }
 
-    private async getCritique(executionId: string, input: CritiqueStepInput) {
+    private async getCritique(
+        executionId: string,
+        input: CritiqueStepInput,
+    ) {
         const formattedPrompt = await critiquePrompt.formatMessages({
             format: critiqueParser.getFormatInstructions(),
             question: input.originalQuestion,
             answer: input.response.answer,
             reasoning: input.response.reasoning,
+            searchResult: input.searchResult.context,
         });
         const response = await this.openai.invoke(formattedPrompt, {
             callbacks: [new CallbackHandler({ ...this.callbackHandlerConfig })],

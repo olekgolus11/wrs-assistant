@@ -27,6 +27,7 @@ export type ResponseStepInput = {
 export type CritiqueStepInput = {
     response: AnswerResponse;
     originalQuestion: string;
+    searchResult: SearchResult;
 };
 
 export type FollowUp = {
