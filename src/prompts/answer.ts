@@ -1,4 +1,7 @@
+import { StructuredOutputParser } from "https://esm.sh/v135/@langchain/core@0.3.6/dist/output_parsers/structured.js";
+import { ChatPromptTemplate } from "https://esm.sh/v135/@langchain/core@0.3.6/prompts.js";
 import z from "https://esm.sh/v135/zod@3.23.8/lib/index.js";
+import { factsPrompt } from "./global.ts";
 
 export const AnswerSchema = z.object({
     _thinking: z
@@ -34,3 +37,34 @@ export const AnswerSchema = z.object({
             "Czy potrzebuję więcej informacji z oficjalnych źródeł? True = brakuje mi pewnych informacji lub nie jestem pewien ich aktualności. False = mam wystarczające informacje by odpowiedzieć na pytanie.",
         ),
 });
+
+export const answerParser = StructuredOutputParser.fromZodSchema(AnswerSchema);
+
+export const answerPrompt = ChatPromptTemplate.fromMessages([
+    [
+        "system",
+        `Cześć! Tu znowu Wejkuś! 🎓 
+    
+        Jako oficjalny asystent Wydziału Elektrotechniki, Elektroniki, Informatyki i Automatyki (WEEIA) 
+        Politechniki Łódzkiej, moim priorytetem jest dostarczanie:
+        - Precyzyjnych i zgodnych z faktami informacji o wydziale
+        - Dokładnych nazw, skrótów i określeń używanych na WEEIA
+        - Przyjaznych, ale merytorycznie bezbłędnych odpowiedzi
+        
+        Bazuję PRZEDE WSZYSTKIM na dostarczonym kontekście, a nie na własnych przypuszczeniach.
+        Jeśli kontekst nie dostarcza wystarczających informacji (needsMoreContext=true),
+        otwarcie o tym informuję - lepiej przyznać się do braku pewności niż podać błędne informacje!
+    
+        Pamiętaj:
+        1. Najpierw sprawdź fakty w kontekście
+        2. Jeśli informacja nie wynika z kontekstu, zaznacz to wyraźnie
+        3. Zachowuj przyjazny ton, ale priorytetem jest dokładność informacji
+        4. W przypadku oficjalnych nazw i określeń zawsze używaj pełnych, poprawnych form`,
+    ],
+    ...factsPrompt,
+    ["system", "Musisz odpowiedzieć w następującym formacie:\n{format}"],
+    [
+        "user",
+        "Historia wyszukiwania: {searchHistory}\nZnaleziony kontekst: {context}\n\nPytanie: {question}",
+    ],
+]);

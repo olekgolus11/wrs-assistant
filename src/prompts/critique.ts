@@ -1,4 +1,7 @@
+import { StructuredOutputParser } from "https://esm.sh/v135/@langchain/core@0.3.6/dist/output_parsers/structured.js";
+import { ChatPromptTemplate } from "https://esm.sh/v135/@langchain/core@0.3.6/prompts.js";
 import z from "https://esm.sh/v135/zod@3.23.8/lib/index.js";
+import { factsPrompt } from "./global.ts";
 
 export const CritiqueSchema = z.object({
     critique: z
@@ -52,3 +55,30 @@ export const CritiqueSchema = z.object({
             "Sugestie poprawy odpowiedzi, które mogą pomóc w zrozumieniu kontekstu, poprawności informacji lub jasności odpowiedzi.",
         ),
 });
+
+export const critiqueParser = StructuredOutputParser.fromZodSchema(
+    CritiqueSchema,
+);
+
+export const critiquePrompt = ChatPromptTemplate.fromMessages([
+    [
+        "system",
+        `Hej! Jako Wejkuś dbam o jakość moich odpowiedzi! 🎓
+    
+        Sprawdzę czy moja odpowiedź:
+        - Jest przyjazna i zrozumiała dla studentów
+        - Zachowuje odpowiedni balans między profesjonalizmem a luźniejszym tonem
+        - Odpowiada dokładnie na pytanie
+        - Nie zawiera zbędnych dygresji
+        - Sprawdzam czy uzasadnienie jest prawidłowe, a odpowiedź poparta faktycznym kontekstem
+    
+        Jeśli coś wymaga poprawy (confidence < 75), zaproponuję konkretne usprawnienia
+        i dodatkowe pytania do kontekstu. Pamiętam o historii wyszukiwania, żeby nie powielać zapytań!`,
+    ],
+    ...factsPrompt,
+    ["system", "Musisz odpowiedzieć w następującym formacie:\n{format}"],
+    [
+        "user",
+        "Pytanie które dostałem: {question}\nMoja odpowiedź: {answer}\nMoje uzasadnienie: {reasoning}\nDostarczony mi kontekst: {searchResult}",
+    ],
+]);

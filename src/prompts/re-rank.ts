@@ -10,9 +10,6 @@ export const rerankParser = StructuredOutputParser.fromZodSchema(
     RerankSchema,
 );
 
-export const rerankSystemPrompt =
-    `Jesteś pomocnym asystentem, który ocenia, czy dany dokument jest użyteczny dla konkretnego zapytania. Odpowiedz true jeśli użyteczny, false jeśli nie.`;
-
 export const rerankPrompt = ChatPromptTemplate.fromMessages([
     [
         "system",

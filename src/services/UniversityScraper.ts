@@ -12,7 +12,7 @@ import { ChatOpenAI } from "https://esm.sh/v135/@langchain/openai@0.3.5/index.js
 import {
     documentDescriptionParser,
     documentDescriptionPrompt,
-} from "../schemas/DocumentDescriptionSchema.ts";
+} from "../prompts/index.ts";
 
 class UniversityScraper {
     private qdrantVectorDB: QDrantVectorDB;
