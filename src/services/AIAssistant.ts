@@ -27,6 +27,7 @@ import {
     Langfuse,
 } from "https://esm.sh/langfuse-langchain@3.29.1";
 import { LangfuseTraceClient } from "https://esm.sh/v135/langfuse-core@3.29.1/lib/index.d.mts";
+import { rerankParser, rerankPrompt } from "../schemas/ReRankSchema.ts";
 
 const contextParser = StructuredOutputParser.fromZodSchema(ContextSchema);
 const answerParser = StructuredOutputParser.fromZodSchema(AnswerSchema);
@@ -385,12 +386,16 @@ class AIAssistant {
     ): Promise<SearchResult> {
         let dbResults: QdrantDocument[] = [];
 
-        const vectorDBSpan = this.parentTrace.span({
-            name: "vector-db-query",
+        const ragSpan = this.parentTrace.span({
+            name: "Context Retrieval",
             input: [],
         });
 
         try {
+            const searchVectorDBSpan = ragSpan.span({
+                name: "Search Vector DB",
+                input: input,
+            });
             if (input.followUp) {
                 const formattedPrompt = await contextPrompt.formatMessages({
                     format: contextParser.getFormatInstructions(),
@@ -408,7 +413,8 @@ class AIAssistant {
                     response.content as string,
                 );
 
-                vectorDBSpan.update({ input: parsedResponse.queries });
+                ragSpan.update({ input: parsedResponse.queries });
+                searchVectorDBSpan.update({ input: parsedResponse.queries });
 
                 const results = await Promise.all(
                     parsedResponse.queries.map((query: string) => {
@@ -424,14 +430,21 @@ class AIAssistant {
                 });
                 dbResults = Array.from(uniqueResults.values());
             } else {
-                vectorDBSpan.update({ input: [input.originalQuestion] });
+                ragSpan.update({ input: [input.originalQuestion] });
                 dbResults = await this.qdrantVectorDB.searchStore(
                     input.originalQuestion,
                 );
             }
+            searchVectorDBSpan.update({ output: dbResults });
+            searchVectorDBSpan.end();
 
-            vectorDBSpan.update({ output: dbResults });
-            vectorDBSpan.end();
+            const rerankedResults = await this.rerankResponses(
+                dbResults,
+                input.originalQuestion,
+            );
+
+            ragSpan.update({ output: rerankedResults });
+            ragSpan.end();
 
             this.logger.logStep(
                 executionId,
@@ -442,15 +455,48 @@ class AIAssistant {
 
             return {
                 searchHistory: input.searchHistory,
-                context: dbResults,
+                context: rerankedResults,
             };
         } catch (error) {
-            vectorDBSpan.update({
+            ragSpan.update({
                 output: error,
             });
-            vectorDBSpan.end();
+            ragSpan.end();
             throw error;
         }
+    }
+
+    private async rerankResponses(
+        qdrantDocuments: QdrantDocument[],
+        originalQuestion: string,
+    ) {
+        const formattedPrompts = await Promise.all(
+            qdrantDocuments.map((doc) => {
+                return rerankPrompt.formatMessages({
+                    format: rerankParser.getFormatInstructions(),
+                    question: originalQuestion,
+                    document: doc,
+                });
+            }),
+        );
+
+        const responses = await Promise.all(
+            formattedPrompts.map((prompt) => {
+                return this.openai.invoke(prompt);
+            }),
+        );
+
+        const parsedResponses = await Promise.all(
+            responses.map((response) => {
+                return rerankParser.parse(response.content as string);
+            }),
+        );
+
+        const filteredDocuments = qdrantDocuments.filter((_, index) => {
+            return parsedResponses[index].isDocumentUseful;
+        });
+
+        return filteredDocuments;
     }
 
     private async getResponse(executionId: string, input: ResponseStepInput) {

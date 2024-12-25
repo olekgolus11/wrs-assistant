@@ -20,10 +20,14 @@ class QDrantVectorDB {
     }
 
     async addDocuments(documents: ScrapedArticle[]) {
+        console.log(
+            "Adding documents to Qdrant Vector DB" +
+                process.env.QDRANT_COLLECTION_NAME,
+        );
         const points = await Promise.all(documents.map(async (doc) => ({
             id: this.createStableUUID(doc.url, doc.title),
             vector: await this.embeddings.embedQuery(
-                doc.title + "\n" + doc.textContent,
+                doc.title + "\n" + doc.description,
             ),
             payload: doc,
         })));
@@ -36,7 +40,7 @@ class QDrantVectorDB {
     async searchStore(query: string): Promise<QdrantDocument[]> {
         const results = await this.store.search(this.collectionName, {
             vector: await this.embeddings.embedQuery(query),
-            limit: 3,
+            limit: 10,
         });
         return results;
     }

@@ -8,12 +8,22 @@ import {
 } from "../types/index.ts";
 import type { CheerioAPI } from "npm:cheerio@^1.0.0-rc.12";
 import QDrantVectorDB from "./QdrantVectorDB.ts";
+import { ChatOpenAI } from "https://esm.sh/v135/@langchain/openai@0.3.5/index.js";
+import {
+    documentDescriptionParser,
+    documentDescriptionPrompt,
+} from "../schemas/DocumentDescriptionSchema.ts";
 
 class UniversityScraper {
     private qdrantVectorDB: QDrantVectorDB;
+    private openai: ChatOpenAI;
 
     constructor() {
         this.qdrantVectorDB = new QDrantVectorDB();
+        this.openai = new ChatOpenAI({
+            model: "gpt-4o-mini",
+            temperature: 0.5,
+        });
     }
 
     public async getUrlsFromSitemap(sitemapUrl: string) {
@@ -45,6 +55,7 @@ class UniversityScraper {
     }
 
     public async scrapeUrl(url: ScrapedUrl): Promise<ScrapedArticle> {
+        console.info(`Scraping ${url.url}`);
         let response;
         try {
             response = await fetch(url.url);
@@ -72,10 +83,34 @@ class UniversityScraper {
             .replace(/[\n\t]+/g, " ")
             .trim();
 
+        const formattedPrompt = await documentDescriptionPrompt.formatMessages({
+            format: documentDescriptionParser.getFormatInstructions(),
+            document: {
+                title: articleText.title,
+                textContent: cleanedText,
+            },
+        });
+        const documentDescriptionResponse = await this.openai.invoke(
+            formattedPrompt,
+        );
+        const parsedResponse = await documentDescriptionParser.parse(
+            documentDescriptionResponse.content as string,
+        );
+
+        if (!parsedResponse.isPageUseful) {
+            throw new Error(`Page ${url.url} is not useful`);
+        }
+
+        console.info(`Scraped ${url.url} with result: 
+            Title: ${articleText.title}
+            Description: ${parsedResponse.description}
+            Keywords: ${parsedResponse.keywords}`);
+
         return {
             title: articleText.title,
+            description: parsedResponse.description,
             textContent: cleanedText,
-            category,
+            keywords: [category, ...parsedResponse.keywords],
             url: url.url,
             date: url.date,
         };

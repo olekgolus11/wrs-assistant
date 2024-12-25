@@ -80,8 +80,9 @@ export type ScrapedUrl = {
 
 export type ScrapedArticle = {
     title: string;
+    description: string;
     textContent: string;
-    category: UrlCategory;
+    keywords: string[];
     url: string;
     date: string;
 };
