@@ -31,6 +31,11 @@ import {
     rerankParser,
     rerankPrompt,
 } from "../prompts/index.ts";
+import {
+    getImprovementSuggestions,
+    getSearchHistory,
+    getUniqueDocuments,
+} from "../helpers/helpers.ts";
 
 class AIAssistant {
     public parentTrace: LangfuseTraceClient;
@@ -94,9 +99,7 @@ class AIAssistant {
                         this.question,
                         this.questionType,
                     );
-                    responsePromise = new Promise<null>((
-                        resolve,
-                    ) => resolve(null));
+                    responsePromise = Promise.resolve(null);
                     break;
                 default:
                     throw new Error(
@@ -115,10 +118,8 @@ class AIAssistant {
                 name: "error",
             });
             return {
-                quickResponsePromise: new Promise((resolve) =>
-                    resolve(response)
-                ),
-                responsePromise: new Promise((resolve) => resolve(null)),
+                quickResponsePromise: Promise.resolve(response),
+                responsePromise: Promise.resolve(null),
             };
         }
     }
@@ -232,35 +233,38 @@ class AIAssistant {
     ): Promise<SearchResult> {
         let dbResults: QdrantDocument[] = [];
 
-        const ragSpan = this.parentTrace.span({
+        const getContextSpan = this.parentTrace.span({
             name: "Context Retrieval",
             input: [],
         });
+        let ragInput;
 
         try {
-            const searchVectorDBSpan = ragSpan.span({
+            const searchVectorDBSpan = getContextSpan.span({
                 name: "Search Vector DB",
                 input: input,
             });
+
             if (input.followUp) {
                 const formattedPrompt = await contextPrompt.formatMessages({
                     format: contextParser.getFormatInstructions(),
                     question: input.originalQuestion,
-                    improvementSuggestions:
-                        input?.followUp?.improvementSuggestions?.join(", ") ||
-                        "Brak sugestii",
+                    improvementSuggestions: getImprovementSuggestions(
+                        input?.followUp?.improvementSuggestions,
+                    ),
                 });
                 const response = await this.openai.invoke(formattedPrompt, {
                     callbacks: [
-                        new CallbackHandler(this.callbackHandlerConfig),
+                        new CallbackHandler({
+                            sessionId: this.sessionId,
+                            root: getContextSpan,
+                        }),
                     ],
                 });
                 const parsedResponse = await contextParser.parse(
                     response.content as string,
                 );
-
-                ragSpan.update({ input: parsedResponse.queries });
-                searchVectorDBSpan.update({ input: parsedResponse.queries });
+                ragInput = parsedResponse.queries;
 
                 const results = await Promise.all(
                     parsedResponse.queries.map((query: string) => {
@@ -268,20 +272,15 @@ class AIAssistant {
                         return this.qdrantVectorDB.searchStore(query);
                     }),
                 );
-                dbResults = results.flat();
-                // delete duplicates by ids
-                const uniqueResults = new Map<string, QdrantDocument>();
-                dbResults.forEach((doc) => {
-                    uniqueResults.set(doc.id, doc);
-                });
-                dbResults = Array.from(uniqueResults.values());
+                dbResults = getUniqueDocuments(results);
             } else {
-                ragSpan.update({ input: [input.originalQuestion] });
+                ragInput = [input.originalQuestion];
                 dbResults = await this.qdrantVectorDB.searchStore(
                     input.originalQuestion,
                 );
             }
-            searchVectorDBSpan.update({ output: dbResults });
+            getContextSpan.update({ input: ragInput });
+            searchVectorDBSpan.update({ input: ragInput, output: dbResults });
             searchVectorDBSpan.end();
 
             const rerankedResults = await this.rerankResponses(
@@ -289,18 +288,18 @@ class AIAssistant {
                 input.originalQuestion,
             );
 
-            ragSpan.update({ output: rerankedResults });
-            ragSpan.end();
+            getContextSpan.update({ output: rerankedResults });
+            getContextSpan.end();
 
             return {
                 searchHistory: input.searchHistory,
                 context: rerankedResults,
             };
         } catch (error) {
-            ragSpan.update({
+            getContextSpan.update({
                 output: error,
             });
-            ragSpan.end();
+            getContextSpan.end();
             throw error;
         }
     }
@@ -341,12 +340,7 @@ class AIAssistant {
     private async getResponse(input: ResponseStepInput) {
         const formattedPrompt = await answerPrompt.formatMessages({
             format: answerParser.getFormatInstructions(),
-            searchHistory: "Próbowałem wyszukać już: " +
-                (input.searchResult?.searchHistory?.join(", ") ||
-                    "Jeszcze niczego nie wyszukiwałem") +
-                (input.followUp?.previousAnswer
-                    ? `Warto zaznaczyć, że ostatnio odpowiedziałem tak: ${input?.followUp?.previousAnswer}, ale poproszono mnie o więcej informacji.`
-                    : ""),
+            searchHistory: getSearchHistory(input),
             question: input.originalQuestion,
             context: input.searchResult.context,
         });
@@ -370,7 +364,7 @@ class AIAssistant {
             searchResult: input.searchResult.context,
         });
         const response = await this.openai.invoke(formattedPrompt, {
-            callbacks: [new CallbackHandler({ ...this.callbackHandlerConfig })],
+            callbacks: [new CallbackHandler(this.callbackHandlerConfig)],
         });
         const parsedResponse = await critiqueParser.parse(
             response.content as string,
