@@ -38,6 +38,30 @@ const quickAnswerParser = StructuredOutputParser.fromZodSchema(
     QuickAnswerSchema,
 );
 
+const facts = [
+    "system",
+    `KLUCZOWE FAKTY O WEEIA (zawsze używaj tych określeń):
+    - Pełna nazwa: Wydział Elektrotechniki, Elektroniki, Informatyki i Automatyki
+    - Skrót: WEEIA
+    - Uczelnia: Politechnika Łódzka
+    
+    Jeśli odpowiedź dotyczy tych podstawowych informacji, ZAWSZE używaj powyższych, 
+    oficjalnych określeń.
+    
+    KLUCZOWE INFORMACJE:
+    - Dzisiaj jest ${
+        new Date().toLocaleDateString("pl-PL", {
+            weekday: "long",
+            day: "numeric",
+            month: "long",
+            year: "numeric",
+        })
+    }
+
+    Jeśli w odpowiedzi znajdują się daty, zawsze je uwzględniaj i sprawdzaj aktualność informacji! Zwróć uwagę czy coś już się wydarzyło, czy jeszcze nie.
+    `,
+];
+
 const answerPrompt = ChatPromptTemplate.fromMessages([
     [
         "system",
@@ -59,20 +83,11 @@ const answerPrompt = ChatPromptTemplate.fromMessages([
         3. Zachowuj przyjazny ton, ale priorytetem jest dokładność informacji
         4. W przypadku oficjalnych nazw i określeń zawsze używaj pełnych, poprawnych form`,
     ],
-    [
-        "system",
-        `KLUCZOWE FAKTY O WEEIA (zawsze używaj tych określeń):
-        - Pełna nazwa: Wydział Elektrotechniki, Elektroniki, Informatyki i Automatyki
-        - Skrót: WEEIA
-        - Uczelnia: Politechnika Łódzka
-        
-        Jeśli odpowiedź dotyczy tych podstawowych informacji, ZAWSZE używaj powyższych, 
-        oficjalnych określeń.`,
-    ],
+    ...facts,
     ["system", "Musisz odpowiedzieć w następującym formacie:\n{format}"],
     [
         "user",
-        "Historia wyszukiwania: {searchHistory}\nKontekst: {context}\n\nPytanie: {question}",
+        "Historia wyszukiwania: {searchHistory}\nZnaleziony kontekst: {context}\n\nPytanie: {question}",
     ],
 ]);
 
@@ -91,10 +106,11 @@ const critiquePrompt = ChatPromptTemplate.fromMessages([
         Jeśli coś wymaga poprawy (confidence < 75), zaproponuję konkretne usprawnienia
         i dodatkowe pytania do kontekstu. Pamiętam o historii wyszukiwania, żeby nie powielać zapytań!`,
     ],
+    ...facts,
     ["system", "Musisz odpowiedzieć w następującym formacie:\n{format}"],
     [
         "user",
-        "Pytanie: {question}\nOdpowiedź: {answer}\nUzasadnienie: {reasoning}\nDostarczony kontekst: {searchResult}",
+        "Pytanie które dostałem: {question}\nMoja odpowiedź: {answer}\nMoje uzasadnienie: {reasoning}\nDostarczony mi kontekst: {searchResult}",
     ],
 ]);
 
@@ -140,6 +156,7 @@ const quickAnswerPrompt = ChatPromptTemplate.fromMessages([
     
         Zawsze zachowuję studencki luz, ale nie zapominam o profesjonalizmie!`,
     ],
+    ...facts,
     ["system", "Musisz odpowiedzieć w następującym formacie:\n{format}."],
     ["system", "Poniższe pytanie zostało sklasyfikowane jako: {questionType}"],
     ["user", "Pytanie: {question}"],
@@ -165,6 +182,8 @@ class AIAssistant {
         }`;
         this.openai = new ChatOpenAI({
             model: "gpt-4o-mini",
+            maxTokens: 4000,
+            temperature: 0.5,
         });
         this.qdrantVectorDB = new QDrantVectorDB();
         this.maxSearchIterations = 2;
@@ -330,9 +349,7 @@ class AIAssistant {
         });
 
         if (
-            (response.needsMoreContext || critique.confidence < 70) &&
-            critique.improvementSuggestions &&
-            critique.followUpQuestion &&
+            (response.needsMoreContext && !critique.didAnswerTheQuestion) &&
             iteration < this.maxSearchIterations
         ) {
             return this.processQuestionWithContext(
@@ -341,7 +358,6 @@ class AIAssistant {
                 searchHistory,
                 iteration + 1,
                 {
-                    followUpQuestion: critique.followUpQuestion,
                     previousAnswer: response.answer,
                     improvementSuggestions: critique.improvementSuggestions,
                 },
@@ -349,11 +365,11 @@ class AIAssistant {
         }
         const wholeResponse = {
             answer: response.answer,
-            reasoning: response.reasoning,
+            _thinking: response._thinking,
             critique: critique.critique,
             confidence: critique.confidence,
+            didAnswerTheQuestion: critique.didAnswerTheQuestion,
             needsMoreContext: response.needsMoreContext,
-            followUpQuestion: critique.followUpQuestion,
             improvementSuggestions: critique.improvementSuggestions,
             urls: context.context.map((doc) => doc.payload.url),
         };
@@ -378,8 +394,7 @@ class AIAssistant {
             if (input.followUp) {
                 const formattedPrompt = await contextPrompt.formatMessages({
                     format: contextParser.getFormatInstructions(),
-                    question: input?.followUp?.followUpQuestion ||
-                        input.originalQuestion,
+                    question: input.originalQuestion,
                     improvementSuggestions:
                         input?.followUp?.improvementSuggestions?.join(", ") ||
                         "Brak sugestii",
@@ -402,6 +417,12 @@ class AIAssistant {
                     }),
                 );
                 dbResults = results.flat();
+                // delete duplicates by ids
+                const uniqueResults = new Map<string, QdrantDocument>();
+                dbResults.forEach((doc) => {
+                    uniqueResults.set(doc.id, doc);
+                });
+                dbResults = Array.from(uniqueResults.values());
             } else {
                 vectorDBSpan.update({ input: [input.originalQuestion] });
                 dbResults = await this.qdrantVectorDB.searchStore(
@@ -411,8 +432,6 @@ class AIAssistant {
 
             vectorDBSpan.update({ output: dbResults });
             vectorDBSpan.end();
-
-            const context = JSON.stringify(dbResults);
 
             this.logger.logStep(
                 executionId,
@@ -471,7 +490,7 @@ class AIAssistant {
             format: critiqueParser.getFormatInstructions(),
             question: input.originalQuestion,
             answer: input.response.answer,
-            reasoning: input.response.reasoning,
+            reasoning: input.response._thinking,
             searchResult: input.searchResult.context,
         });
         const response = await this.openai.invoke(formattedPrompt, {

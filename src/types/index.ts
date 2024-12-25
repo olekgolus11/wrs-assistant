@@ -46,7 +46,6 @@ export type CritiqueStepInput = {
 };
 
 export type FollowUp = {
-    followUpQuestion: string;
     previousAnswer: string;
     improvementSuggestions: string[];
 };

@@ -36,7 +36,7 @@ class QDrantVectorDB {
     async searchStore(query: string): Promise<QdrantDocument[]> {
         const results = await this.store.search(this.collectionName, {
             vector: await this.embeddings.embedQuery(query),
-            limit: 2,
+            limit: 3,
         });
         return results;
     }
