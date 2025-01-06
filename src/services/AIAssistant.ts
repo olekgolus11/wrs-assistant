@@ -218,7 +218,6 @@ class AIAssistant {
             answer: response.answer,
             _thinking: response._thinking,
             critique: critique.critique,
-            confidence: critique.confidence,
             didAnswerTheQuestion: critique.didAnswerTheQuestion,
             needsMoreContext: response.needsMoreContext,
             improvementSuggestions: critique.improvementSuggestions,
