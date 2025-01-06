@@ -1,6 +1,7 @@
 import { STATUS_CODE } from "jsr:@oak/commons@1/status";
 import AIAssistant from "../../services/AIAssistant.ts";
 import { Context } from "jsr:@oak/oak";
+import { mergeHistoryWithPrompt } from "../../helpers/helpers.ts";
 
 export const askQuestionWebSocket = (ctx: Context) => {
     if (!ctx.isUpgradable) {
@@ -19,11 +20,19 @@ export const askQuestionWebSocket = (ctx: Context) => {
         const message = JSON.parse(m.data as string) as {
             type: string;
             prompt: string;
+            history: {
+                type: string;
+                message: string;
+            }[];
         };
 
         if (message.type === "chat") {
             console.log("Got chat message from client: ", m.data);
-            const assistant = new AIAssistant(message.prompt);
+            const messageWithHistory = mergeHistoryWithPrompt(
+                message.history,
+                message.prompt,
+            );
+            const assistant = new AIAssistant(messageWithHistory);
             const { quickResponsePromise, responsePromise } = await assistant
                 .askQuestion();
 
