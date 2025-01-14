@@ -282,7 +282,7 @@ class AIAssistant {
             searchVectorDBSpan.update({ input: ragInput, output: dbResults });
             searchVectorDBSpan.end();
 
-            const rerankedResults = await this.rerankResponses(
+            const rerankedResults = await this.correctResponses(
                 dbResults,
                 input.originalQuestion,
             );
@@ -303,7 +303,7 @@ class AIAssistant {
         }
     }
 
-    private async rerankResponses(
+    private async correctResponses(
         qdrantDocuments: QdrantDocument[],
         originalQuestion: string,
     ) {
