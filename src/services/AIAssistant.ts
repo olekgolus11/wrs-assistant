@@ -221,7 +221,9 @@ class AIAssistant {
             didAnswerTheQuestion: critique.didAnswerTheQuestion,
             needsMoreContext: response.needsMoreContext,
             improvementSuggestions: critique.improvementSuggestions,
-            urls: context.context.map((doc) => doc.payload.url),
+            urls: Array.from(
+                new Set(context.context.map((doc) => doc.payload.url)),
+            ),
         };
 
         return wholeResponse;
