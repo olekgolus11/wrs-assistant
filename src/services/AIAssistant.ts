@@ -1,5 +1,5 @@
 import QDrantVectorDB from "./QdrantVectorDB.ts";
-import { ChatOpenAI } from "https://esm.sh/@langchain/openai@0.3.5";
+import { ChatOpenAI } from "https://esm.sh/v135/@langchain/openai@0.3.5";
 import {
     AssistantResponse,
     CallbackHandlerConfig,
