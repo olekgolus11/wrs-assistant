@@ -1,9 +1,9 @@
 import z from "https://esm.sh/v135/zod@3.23.8/lib/index.js";
-import type {
+import {
     AnswerSchema,
     CritiqueSchema,
     QuickAnswerSchema,
-} from "../schemas/index.ts";
+} from "../prompts/index.ts";
 import CallbackHandler from "https://esm.sh/v135/langfuse-langchain@3.29.1/lib/index.d.mts";
 import { LangfuseTraceClient } from "https://esm.sh/v135/langfuse-core@3.29.1/lib/index.d.mts";
 
