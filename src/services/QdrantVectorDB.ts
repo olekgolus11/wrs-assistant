@@ -1,6 +1,6 @@
-import { OpenAIEmbeddings } from "https://esm.sh/@langchain/openai@0.3.5";
+import { OpenAIEmbeddings } from "https://esm.sh/v135/@langchain/openai@0.3.5";
 import process from "node:process";
-import { QdrantClient } from "https://esm.sh/@qdrant/js-client-rest@1.12.0";
+import { QdrantClient } from "https://esm.sh/v135/@qdrant/js-client-rest@1.12.0";
 import { QdrantDocument, ScrapedArticle } from "../types/index.ts";
 import { createHash } from "node:crypto";
 
