@@ -31,3 +31,20 @@ export const getSearchHistory = (input: ResponseStepInput) => {
 
     return `Próbowałem wyszukać już: ${searchHistory} ${previousAnswer}`;
 };
+
+export const mergeHistoryWithPrompt = (
+    history: { type: string; message: string }[],
+    prompt: string,
+) => {
+    const historyAsString = JSON.stringify(history);
+
+    return `This is the chat history:
+<chat_history>
+${historyAsString}
+</chat_history>
+This is the next user message:
+<user_message>
+${prompt}
+</user_message>
+    `;
+};

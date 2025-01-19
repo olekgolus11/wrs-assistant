@@ -1,5 +1,5 @@
 import QDrantVectorDB from "./QdrantVectorDB.ts";
-import { ChatOpenAI } from "https://esm.sh/@langchain/openai@0.3.5";
+import { ChatOpenAI } from "https://esm.sh/v135/@langchain/openai@0.3.5";
 import {
     AssistantResponse,
     CallbackHandlerConfig,
@@ -15,7 +15,7 @@ import {
 import {
     CallbackHandler,
     Langfuse,
-} from "https://esm.sh/langfuse-langchain@3.29.1";
+} from "https://esm.sh/v135/langfuse-langchain@3.29.1";
 import { LangfuseTraceClient } from "https://esm.sh/v135/langfuse-core@3.29.1/lib/index.d.mts";
 import {
     answerParser,
@@ -218,11 +218,12 @@ class AIAssistant {
             answer: response.answer,
             _thinking: response._thinking,
             critique: critique.critique,
-            confidence: critique.confidence,
             didAnswerTheQuestion: critique.didAnswerTheQuestion,
             needsMoreContext: response.needsMoreContext,
             improvementSuggestions: critique.improvementSuggestions,
-            urls: context.context.map((doc) => doc.payload.url),
+            urls: Array.from(
+                new Set(context.context.map((doc) => doc.payload.url)),
+            ),
         };
 
         return wholeResponse;
@@ -283,7 +284,7 @@ class AIAssistant {
             searchVectorDBSpan.update({ input: ragInput, output: dbResults });
             searchVectorDBSpan.end();
 
-            const rerankedResults = await this.rerankResponses(
+            const rerankedResults = await this.correctResponses(
                 dbResults,
                 input.originalQuestion,
             );
@@ -304,7 +305,7 @@ class AIAssistant {
         }
     }
 
-    private async rerankResponses(
+    private async correctResponses(
         qdrantDocuments: QdrantDocument[],
         originalQuestion: string,
     ) {

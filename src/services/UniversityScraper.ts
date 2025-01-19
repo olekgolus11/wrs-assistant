@@ -1,5 +1,5 @@
 import { Readability } from "jsr:@paoramen/cheer-reader";
-import * as cheerio from "https://esm.sh/cheerio@1.0.0";
+import * as cheerio from "https://esm.sh/v135/cheerio@1.0.0";
 import {
     type ScrapedArticle,
     type ScrapedUrl,
