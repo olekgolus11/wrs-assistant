@@ -27,7 +27,7 @@ export type QdrantDocumentPayload = {
     date: string;
 };
 
-export type SequenceInput = {
+export type SearchContextInput = {
     originalQuestion: string;
     searchHistory: string[];
     followUp?: FollowUp;

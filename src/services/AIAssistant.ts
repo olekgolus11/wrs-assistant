@@ -10,8 +10,8 @@ import {
     QuestionEvaluationType,
     QuickAssistantResponse,
     ResponseStepInput,
+    SearchContextInput,
     SearchResult,
-    SequenceInput,
 } from "../types/index.ts";
 import {
     CallbackHandler,
@@ -271,7 +271,7 @@ class AIAssistant {
     }
 
     private async getContext(
-        input: SequenceInput,
+        input: SearchContextInput,
     ): Promise<SearchResult> {
         let dbResults: QdrantDocument[] = [];
 
