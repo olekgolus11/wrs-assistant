@@ -1,7 +1,6 @@
 import { STATUS_CODE } from "jsr:@oak/commons@1/status";
 import AIAssistant from "../../services/AIAssistant.ts";
 import { Context } from "jsr:@oak/oak";
-import { mergeHistoryWithPrompt } from "../../helpers/helpers.ts";
 
 const kv = await Deno.openKv();
 const MAX_RATE_LIMIT = 5;
