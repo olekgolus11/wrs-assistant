@@ -31,5 +31,6 @@ export const quickAnswerPrompt = ChatPromptTemplate.fromMessages([
     ...factsPrompt,
     ["system", "Musisz odpowiedzieć w następującym formacie:\n{format}."],
     ["system", "Poniższe pytanie zostało sklasyfikowane jako: {questionType}"],
+    ["user", "Historia czatu: {chatHistory}"],
     ["user", "Pytanie: {question}"],
 ]);

@@ -88,11 +88,7 @@ export const askQuestionWebSocket = (ctx: Context) => {
         if (message.type === "chat") {
             try {
                 console.log("Got chat message from client: ", m.data);
-                const messageWithHistory = mergeHistoryWithPrompt(
-                    message.history,
-                    message.prompt,
-                );
-                assistant = new AIAssistant(messageWithHistory);
+                assistant = new AIAssistant(message.prompt, message.history);
                 const { quickResponsePromise, responsePromise } =
                     await assistant.askQuestion();
 

@@ -7,6 +7,11 @@ import {
 import CallbackHandler from "https://esm.sh/v135/langfuse-langchain@3.29.1/lib/index.d.mts";
 import { LangfuseTraceClient } from "https://esm.sh/v135/langfuse-core@3.29.1/lib/index.d.mts";
 
+export type ChatHistory = {
+    type: string;
+    message: string;
+};
+
 export type QdrantDocument = {
     id: string;
     version: number;

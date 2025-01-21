@@ -3,6 +3,7 @@ import { ChatOpenAI } from "https://esm.sh/v135/@langchain/openai@0.3.5";
 import {
     AssistantResponse,
     CallbackHandlerConfig,
+    ChatHistory,
     CritiqueStepInput,
     FollowUp,
     QdrantDocument,
@@ -26,6 +27,8 @@ import {
     critiquePrompt,
     questionEvalParser,
     questionEvalPrompt,
+    questionExtractParser,
+    questionExtractPrompt,
     quickAnswerParser,
     quickAnswerPrompt,
     rerankParser,
@@ -48,9 +51,11 @@ class AIAssistant {
     private sessionId: string;
     private langfuse: Langfuse;
     private question: string;
+    private chatHistory: ChatHistory[];
 
-    constructor(question: string) {
+    constructor(question: string, history: ChatHistory[]) {
         this.question = question;
+        this.chatHistory = history;
         this.langfuse = new Langfuse();
         this.sessionId = `${Date.now()}-${
             Math.random().toString(36).substring(2, 9)
@@ -78,18 +83,23 @@ class AIAssistant {
         quickResponsePromise: Promise<QuickAssistantResponse>;
     }> {
         try {
-            this.questionType = await this.evaluateQuestion(this.question);
+            this.questionType = await this.evaluateQuestion(
+                this.question,
+                this.chatHistory,
+            );
             let quickResponsePromise;
             let responsePromise;
             switch (this.questionType) {
                 case "question":
                     quickResponsePromise = this.processQuestion(
                         this.question,
+                        this.chatHistory,
                         this.questionType,
                     );
                     responsePromise = this.processQuestionWithContext(
                         this.sessionId,
                         this.question,
+                        this.chatHistory,
                     );
                     break;
                 case "casual":
@@ -97,6 +107,7 @@ class AIAssistant {
                 case "nonsense":
                     quickResponsePromise = this.processQuestion(
                         this.question,
+                        this.chatHistory,
                         this.questionType,
                     );
                     responsePromise = Promise.resolve(null);
@@ -126,9 +137,11 @@ class AIAssistant {
 
     private async evaluateQuestion(
         question: string,
+        chatHistory: ChatHistory[] = [],
     ): Promise<QuestionEvaluationType> {
         const formattedPrompt = await questionEvalPrompt.formatMessages({
             format: questionEvalParser.getFormatInstructions(),
+            chatHistory: chatHistory.length > 0 ? chatHistory : "Brak historii",
             question,
         });
 
@@ -155,11 +168,13 @@ class AIAssistant {
 
     private async processQuestion(
         question: string,
+        chatHistory: ChatHistory[],
         questionType: string,
     ) {
         const formattedPrompt = await quickAnswerPrompt.formatMessages({
             format: quickAnswerParser.getFormatInstructions(),
             question,
+            chatHistory: chatHistory.length > 0 ? chatHistory : "Brak historii",
             questionType,
         });
         const quickAnswerResponse = await this.openai.invoke(formattedPrompt, {
@@ -178,23 +193,29 @@ class AIAssistant {
     private async processQuestionWithContext(
         executionId: string,
         originalQuestion: string,
+        chatHistory: ChatHistory[],
         searchHistory: string[] = [],
         iteration = 0,
         followUp?: FollowUp,
     ): Promise<AssistantResponse> {
-        const context = await this.getContext({
+        const questionAsked = await this.extractQuestion(
             originalQuestion,
+            chatHistory,
+        );
+
+        const context = await this.getContext({
+            originalQuestion: questionAsked,
             followUp,
             searchHistory,
         });
 
         const response = await this.getResponse({
-            originalQuestion,
+            originalQuestion: questionAsked,
             searchResult: context,
         });
 
         const critique = await this.getCritique({
-            originalQuestion,
+            originalQuestion: questionAsked,
             response,
             searchResult: context,
         });
@@ -205,7 +226,8 @@ class AIAssistant {
         ) {
             return this.processQuestionWithContext(
                 executionId,
-                originalQuestion,
+                questionAsked,
+                chatHistory,
                 searchHistory,
                 iteration + 1,
                 {
@@ -227,6 +249,25 @@ class AIAssistant {
         };
 
         return wholeResponse;
+    }
+
+    private async extractQuestion(
+        originalQuestion: string,
+        chatHistory: ChatHistory[],
+    ): Promise<string> {
+        const formattedPrompt = await questionExtractPrompt.formatMessages({
+            format: questionExtractParser.getFormatInstructions(),
+            question: originalQuestion,
+            chatHistory,
+        });
+        const response = await this.openai.invoke(formattedPrompt, {
+            callbacks: [new CallbackHandler(this.callbackHandlerConfig)],
+        });
+        const parsedResponse = await questionExtractParser.parse(
+            response.content as string,
+        );
+
+        return parsedResponse.question;
     }
 
     private async getContext(

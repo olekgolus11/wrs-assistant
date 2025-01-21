@@ -5,3 +5,4 @@ export * from "./document-description.ts";
 export * from "./question-eval.ts";
 export * from "./quick-answer.ts";
 export * from "./re-rank.ts";
+export * from "./question-extract.ts";

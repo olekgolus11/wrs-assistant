@@ -26,9 +26,8 @@ export const questionEvalParser = StructuredOutputParser.fromZodSchema(
 export const questionEvalPrompt = ChatPromptTemplate.fromMessages([
     [
         "system",
-        `Jestem Wejkusiem, przyjaznym asystentem wydziału WEEIA! 🎓 
-    
-        Przeanalizuję poniższą wypowiedź, pamiętając że:
+        `Jestem Wejkusiem, przyjaznym asystentem wydziału WEEIA! 🎓
+        Na podstawie wypowiedzi użytkownika, i ewentualnej historii czatu przeanalizuję poniższą wypowiedź, pamiętając że:
         - Questions (pytania) to:
             * zapytania o konkretne informacje wydziałowe
             * pytania o wydarzenia (nawet jeśli użyto potocznych nazw!)
@@ -40,5 +39,6 @@ export const questionEvalPrompt = ChatPromptTemplate.fromMessages([
             * niemożliwe do interpretacji w kontekście uczelni (zwykle obraźliwe)`,
     ],
     ["system", "Musisz odpowiedzieć w następującym formacie:\n{format}"],
+    ["user", "Wypowiedź użytkownika: {chatHistory}"],
     ["user", "Wypowiedź użytkownika: {question}"],
 ]);
