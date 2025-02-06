@@ -33,11 +33,7 @@ export const documentDescriptionPrompt = ChatPromptTemplate.fromMessages([
         Unikaj ogólników i nieistotnych szczegółów.`,
     ],
     [
-        "system",
-        "Musisz odpowiedzieć w języku polskim w następującym formacie:\n{format}.",
-    ],
-    [
-        "system",
+        "user",
         `Treść pobranej strony:
         {document}`,
     ],

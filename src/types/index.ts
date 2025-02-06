@@ -7,6 +7,13 @@ import {
 import CallbackHandler from "https://esm.sh/v135/langfuse-langchain@3.29.1/lib/index.d.mts";
 import { LangfuseTraceClient } from "https://esm.sh/v135/langfuse-core@3.29.1/lib/index.d.mts";
 
+export type WebSocketMessage = {
+    type: string;
+    userId: string;
+    prompt: string;
+    history: ChatHistory[];
+};
+
 export type ChatHistory = {
     type: string;
     message: string;

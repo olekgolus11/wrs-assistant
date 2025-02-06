@@ -1,9 +1,10 @@
 import { STATUS_CODE } from "jsr:@oak/commons@1/status";
 import AIAssistant from "../../services/AIAssistant.ts";
 import { Context } from "jsr:@oak/oak";
+import { WebSocketMessage } from "../../types/index.ts";
 
 const kv = await Deno.openKv();
-const MAX_RATE_LIMIT = 5;
+const MAX_RATE_LIMIT = 55;
 const RATE_LIMIT_RESET_TIME = 3600000; // 1 hour
 
 export const askQuestionWebSocket = (ctx: Context) => {
@@ -20,15 +21,7 @@ export const askQuestionWebSocket = (ctx: Context) => {
     };
 
     ws.onmessage = async (m) => {
-        const message = JSON.parse(m.data as string) as {
-            type: string;
-            userId: string;
-            prompt: string;
-            history: {
-                type: string;
-                message: string;
-            }[];
-        };
+        const message = JSON.parse(m.data as string) as WebSocketMessage;
 
         if (!message.userId) {
             ws.send(

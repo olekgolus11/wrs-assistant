@@ -38,7 +38,9 @@ export const questionEvalPrompt = ChatPromptTemplate.fromMessages([
             * całkowicie niezrozumiałe
             * niemożliwe do interpretacji w kontekście uczelni (zwykle obraźliwe)`,
     ],
-    ["system", "Musisz odpowiedzieć w następującym formacie:\n{format}"],
-    ["user", "Historia czatu: {chatHistory}"],
-    ["user", "Wypowiedź użytkownika: {question}"],
+    [
+        "user",
+        `Historia czatu: {chatHistory}
+Wypowiedź użytkownika: {question}`,
+    ],
 ]);

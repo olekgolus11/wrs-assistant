@@ -19,21 +19,22 @@ import {
 } from "https://esm.sh/v135/langfuse-langchain@3.29.1";
 import { LangfuseTraceClient } from "https://esm.sh/v135/langfuse-core@3.29.1/lib/index.d.mts";
 import {
-    answerParser,
     answerPrompt,
-    contextParser,
+    AnswerSchema,
     contextPrompt,
-    critiqueParser,
+    ContextSchema,
     critiquePrompt,
-    questionEvalParser,
+    CritiqueSchema,
     questionEvalPrompt,
-    questionExtractParser,
+    QuestionEvalSchema,
     questionExtractPrompt,
-    quickAnswerParser,
+    QuestionExtractSchema,
     quickAnswerPrompt,
-    rerankParser,
+    QuickAnswerSchema,
     rerankPrompt,
+    RerankSchema,
 } from "../prompts/index.ts";
+import { ChatGoogleGenerativeAI } from "https://esm.sh/v135/@langchain/google-genai@0.1.8";
 import {
     getImprovementSuggestions,
     getSearchHistory,
@@ -45,6 +46,7 @@ class AIAssistant {
     public questionType: string | undefined;
 
     private openai: ChatOpenAI;
+    private gemini: ChatGoogleGenerativeAI;
     private qdrantVectorDB: QDrantVectorDB;
     private maxSearchIterations: number;
     private callbackHandlerConfig: CallbackHandlerConfig;
@@ -63,6 +65,10 @@ class AIAssistant {
         this.openai = new ChatOpenAI({
             model: "gpt-4o-mini",
             maxTokens: 4000,
+            temperature: 0.5,
+        });
+        this.gemini = new ChatGoogleGenerativeAI({
+            model: "gemini-2.0-flash",
             temperature: 0.5,
         });
         this.qdrantVectorDB = new QDrantVectorDB();
@@ -139,18 +145,19 @@ class AIAssistant {
         question: string,
         chatHistory: ChatHistory[] = [],
     ): Promise<QuestionEvaluationType> {
+        const structuredModel = this.gemini.withStructuredOutput(
+            QuestionEvalSchema,
+            { name: "QuestionEvalSchema" },
+        );
         const formattedPrompt = await questionEvalPrompt.formatMessages({
-            format: questionEvalParser.getFormatInstructions(),
             chatHistory: chatHistory.length > 0 ? chatHistory : "Brak historii",
             question,
         });
 
-        const response = await this.openai.invoke(formattedPrompt, {
+        const response = await structuredModel.invoke(formattedPrompt, {
             callbacks: [new CallbackHandler(this.callbackHandlerConfig)],
         });
-        const parsedResponse = await questionEvalParser.parse(
-            response.content as string,
-        );
+        console.log(response);
 
         const availableFormats: QuestionEvaluationType[] = [
             "question",
@@ -158,12 +165,12 @@ class AIAssistant {
             "attack",
             "nonsense",
         ];
-        if (!availableFormats.includes(parsedResponse.questionType)) {
+        if (!availableFormats.includes(response.questionType)) {
             throw new Error(
-                `Invalid request type: ${parsedResponse.questionType}`,
+                `Invalid request type: ${response.questionType}`,
             );
         }
-        return parsedResponse.questionType;
+        return response.questionType;
     }
 
     private async processQuestion(
@@ -171,21 +178,25 @@ class AIAssistant {
         chatHistory: ChatHistory[],
         questionType: string,
     ) {
+        const structuredModel = this.gemini.withStructuredOutput(
+            QuickAnswerSchema,
+            { name: "QuickAnswerSchema" },
+        );
         const formattedPrompt = await quickAnswerPrompt.formatMessages({
-            format: quickAnswerParser.getFormatInstructions(),
             question,
             chatHistory: chatHistory.length > 0 ? chatHistory : "Brak historii",
             questionType,
         });
-        const quickAnswerResponse = await this.openai.invoke(formattedPrompt, {
-            callbacks: [new CallbackHandler(this.callbackHandlerConfig)],
-        });
-        const parsedResponse = await quickAnswerParser.parse(
-            quickAnswerResponse.content as string,
+        const quickAnswerResponse = await structuredModel.invoke(
+            formattedPrompt,
+            {
+                callbacks: [new CallbackHandler(this.callbackHandlerConfig)],
+            },
         );
+        console.log(quickAnswerResponse);
 
         return {
-            answer: parsedResponse.answer,
+            answer: quickAnswerResponse.answer,
             questionType,
         } as QuickAssistantResponse;
     }
@@ -255,19 +266,19 @@ class AIAssistant {
         originalQuestion: string,
         chatHistory: ChatHistory[],
     ): Promise<string> {
+        const structuredModel = this.gemini.withStructuredOutput(
+            QuestionExtractSchema,
+            { name: "QuestionExtractSchema" },
+        );
         const formattedPrompt = await questionExtractPrompt.formatMessages({
-            format: questionExtractParser.getFormatInstructions(),
             question: originalQuestion,
             chatHistory,
         });
-        const response = await this.openai.invoke(formattedPrompt, {
+        const response = await structuredModel.invoke(formattedPrompt, {
             callbacks: [new CallbackHandler(this.callbackHandlerConfig)],
         });
-        const parsedResponse = await questionExtractParser.parse(
-            response.content as string,
-        );
 
-        return parsedResponse.question;
+        return response.question;
     }
 
     private async getContext(
@@ -288,14 +299,17 @@ class AIAssistant {
             });
 
             if (input.followUp) {
+                const structuredModel = this.gemini.withStructuredOutput(
+                    ContextSchema,
+                    { name: "ContextSchema" },
+                );
                 const formattedPrompt = await contextPrompt.formatMessages({
-                    format: contextParser.getFormatInstructions(),
                     question: input.originalQuestion,
                     improvementSuggestions: getImprovementSuggestions(
                         input?.followUp?.improvementSuggestions,
                     ),
                 });
-                const response = await this.openai.invoke(formattedPrompt, {
+                const response = await structuredModel.invoke(formattedPrompt, {
                     callbacks: [
                         new CallbackHandler({
                             sessionId: this.sessionId,
@@ -303,13 +317,10 @@ class AIAssistant {
                         }),
                     ],
                 });
-                const parsedResponse = await contextParser.parse(
-                    response.content as string,
-                );
-                ragInput = parsedResponse.queries;
+                ragInput = response.queries;
 
                 const results = await Promise.all(
-                    parsedResponse.queries.map((query: string) => {
+                    response.queries.map((query: string) => {
                         input.searchHistory.push(query);
                         return this.qdrantVectorDB.searchStore(query);
                     }),
@@ -350,10 +361,13 @@ class AIAssistant {
         qdrantDocuments: QdrantDocument[],
         originalQuestion: string,
     ) {
+        const structuredModel = this.gemini.withStructuredOutput(
+            RerankSchema,
+            { name: "RerankSchema" },
+        );
         const formattedPrompts = await Promise.all(
             qdrantDocuments.map((doc) => {
                 return rerankPrompt.formatMessages({
-                    format: rerankParser.getFormatInstructions(),
                     question: originalQuestion,
                     document: doc,
                 });
@@ -362,57 +376,51 @@ class AIAssistant {
 
         const responses = await Promise.all(
             formattedPrompts.map((prompt) => {
-                return this.openai.invoke(prompt);
-            }),
-        );
-
-        const parsedResponses = await Promise.all(
-            responses.map((response) => {
-                return rerankParser.parse(response.content as string);
+                return structuredModel.invoke(prompt);
             }),
         );
 
         const filteredDocuments = qdrantDocuments.filter((_, index) => {
-            return parsedResponses[index].isDocumentUseful;
+            return responses[index].isDocumentUseful;
         });
 
         return filteredDocuments;
     }
 
     private async getResponse(input: ResponseStepInput) {
+        const structuredModel = this.gemini.withStructuredOutput(
+            AnswerSchema,
+            { name: "AnswerSchema" },
+        );
         const formattedPrompt = await answerPrompt.formatMessages({
-            format: answerParser.getFormatInstructions(),
             searchHistory: getSearchHistory(input),
             question: input.originalQuestion,
             context: input.searchResult.context,
         });
-        const response = await this.openai.invoke(formattedPrompt, {
+        const response = await structuredModel.invoke(formattedPrompt, {
             callbacks: [new CallbackHandler(this.callbackHandlerConfig)],
         });
-        const parsedResponse = await answerParser.parse(
-            response.content as string,
-        );
-        return parsedResponse;
+        return response;
     }
 
     private async getCritique(
         input: CritiqueStepInput,
     ) {
+        const structuredModel = this.gemini.withStructuredOutput(
+            CritiqueSchema,
+            { name: "CritiqueSchema" },
+        );
         const formattedPrompt = await critiquePrompt.formatMessages({
-            format: critiqueParser.getFormatInstructions(),
             question: input.originalQuestion,
             answer: input.response.answer,
             reasoning: input.response._thinking,
             searchResult: input.searchResult.context,
         });
-        const response = await this.openai.invoke(formattedPrompt, {
+        const response = await structuredModel.invoke(formattedPrompt, {
             callbacks: [new CallbackHandler(this.callbackHandlerConfig)],
         });
-        const parsedResponse = await critiqueParser.parse(
-            response.content as string,
-        );
 
-        return parsedResponse;
+        return response;
     }
 }
 

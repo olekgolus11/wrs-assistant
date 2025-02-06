@@ -1,5 +1,4 @@
-export const factsPrompt = [
-    "system",
+export const facts = () =>
     `KLUCZOWE FAKTY O WEEIA (zawsze używaj tych określeń):
     - Pełna nazwa: Wydział Elektrotechniki, Elektroniki, Informatyki i Automatyki
     - Skrót: WEEIA
@@ -18,5 +17,4 @@ export const factsPrompt = [
         })
     }
 
-    Jeśli w odpowiedzi znajdują się daty, zawsze je uwzględniaj i sprawdzaj aktualność informacji! Zwróć uwagę czy coś już się wydarzyło, czy jeszcze nie.`,
-];
+Jeśli w odpowiedzi znajdują się daty, zawsze je uwzględniaj i sprawdzaj aktualność informacji! Zwróć uwagę czy coś już się wydarzyło, czy jeszcze nie.`;

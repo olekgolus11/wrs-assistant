@@ -1,5 +1,5 @@
 import z from "https://esm.sh/v135/zod@3.23.8/lib/index.js";
-import { factsPrompt } from "./global.ts";
+import { facts } from "./global.ts";
 import { StructuredOutputParser } from "https://esm.sh/v135/@langchain/core@0.3.6/dist/output_parsers/structured.js";
 import { ChatPromptTemplate } from "https://esm.sh/v135/@langchain/core@0.3.6/prompts.js";
 
@@ -38,10 +38,13 @@ export const questionExtractPrompt = ChatPromptTemplate.fromMessages([
                 question: "Co to wtyczka?"
             </output>
         </examples>
+
+        ${facts()}
         `,
     ],
-    ...factsPrompt,
-    ["system", "Musisz odpowiedzieć w następującym formacie:\n{format}."],
-    ["user", "Historia czatu: {chatHistory}"],
-    ["user", "Pytanie użytkownika: {question}"],
+    [
+        "user",
+        `Historia czatu: {chatHistory}
+Pytanie użytkownika: {question}`,
+    ],
 ]);

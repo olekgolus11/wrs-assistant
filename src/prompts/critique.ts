@@ -1,7 +1,7 @@
 import { StructuredOutputParser } from "https://esm.sh/v135/@langchain/core@0.3.6/dist/output_parsers/structured.js";
 import { ChatPromptTemplate } from "https://esm.sh/v135/@langchain/core@0.3.6/prompts.js";
 import z from "https://esm.sh/v135/zod@3.23.8/lib/index.js";
-import { factsPrompt } from "./global.ts";
+import { facts } from "./global.ts";
 
 export const CritiqueSchema = z.object({
     critique: z
@@ -52,10 +52,10 @@ export const critiquePrompt = ChatPromptTemplate.fromMessages([
         - Sprawdzam czy uzasadnienie jest prawidłowe, a odpowiedź poparta faktycznym kontekstem
     
         Jeśli coś wymaga poprawy (confidence < 75), zaproponuję konkretne usprawnienia
-        i dodatkowe pytania do kontekstu. Pamiętam o historii wyszukiwania, żeby nie powielać zapytań!`,
+        i dodatkowe pytania do kontekstu. Pamiętam o historii wyszukiwania, żeby nie powielać zapytań!
+        
+        ${facts()}`,
     ],
-    ...factsPrompt,
-    ["system", "Musisz odpowiedzieć w następującym formacie:\n{format}"],
     [
         "user",
         "Pytanie które dostałem: {question}\nMoja odpowiedź: {answer}\nMoje uzasadnienie: {reasoning}\nDostarczony mi kontekst: {searchResult}",

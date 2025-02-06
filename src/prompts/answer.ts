@@ -1,7 +1,7 @@
 import { StructuredOutputParser } from "https://esm.sh/v135/@langchain/core@0.3.6/dist/output_parsers/structured.js";
 import { ChatPromptTemplate } from "https://esm.sh/v135/@langchain/core@0.3.6/prompts.js";
 import z from "https://esm.sh/v135/zod@3.23.8/lib/index.js";
-import { factsPrompt } from "./global.ts";
+import { facts } from "./global.ts";
 
 export const AnswerSchema = z.object({
     _thinking: z
@@ -59,10 +59,10 @@ export const answerPrompt = ChatPromptTemplate.fromMessages([
         1. Najpierw sprawdź fakty w kontekście
         2. Jeśli informacja nie wynika z kontekstu, zaznacz to wyraźnie
         3. Zachowuj przyjazny ton, ale priorytetem jest dokładność informacji
-        4. W przypadku oficjalnych nazw i określeń zawsze używaj pełnych, poprawnych form`,
+        4. W przypadku oficjalnych nazw i określeń zawsze używaj pełnych, poprawnych form
+        
+        ${facts()}`,
     ],
-    ...factsPrompt,
-    ["system", "Musisz odpowiedzieć w następującym formacie:\n{format}"],
     [
         "user",
         "Historia wyszukiwania: {searchHistory}\nZnaleziony kontekst: {context}\n\nPytanie: {question}",

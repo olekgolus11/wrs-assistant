@@ -12,6 +12,7 @@ import { ChatOpenAI } from "https://esm.sh/v135/@langchain/openai@0.3.5/index.js
 import {
     documentDescriptionParser,
     documentDescriptionPrompt,
+    DocumentDescriptionSchema,
 } from "../prompts/index.ts";
 
 class UniversityScraper {
@@ -83,34 +84,34 @@ class UniversityScraper {
             .replace(/[\n\t]+/g, " ")
             .trim();
 
+        const structuredModel = this.openai.withStructuredOutput(
+            DocumentDescriptionSchema,
+            { name: "DocumentDescriptionSchema" },
+        );
         const formattedPrompt = await documentDescriptionPrompt.formatMessages({
-            format: documentDescriptionParser.getFormatInstructions(),
             document: {
                 title: articleText.title,
                 textContent: cleanedText,
             },
         });
-        const documentDescriptionResponse = await this.openai.invoke(
+        const documentDescriptionResponse = await structuredModel.invoke(
             formattedPrompt,
         );
-        const parsedResponse = await documentDescriptionParser.parse(
-            documentDescriptionResponse.content as string,
-        );
 
-        if (!parsedResponse.isPageUseful) {
+        if (!documentDescriptionResponse.isPageUseful) {
             throw new Error(`Page ${url.url} is not useful`);
         }
 
         console.info(`Scraped ${url.url} with result: 
             Title: ${articleText.title}
-            Description: ${parsedResponse.description}
-            Keywords: ${parsedResponse.keywords}`);
+            Description: ${documentDescriptionResponse.description}
+            Keywords: ${documentDescriptionResponse.keywords}`);
 
         return {
             title: articleText.title,
-            description: parsedResponse.description,
+            description: documentDescriptionResponse.description,
             textContent: cleanedText,
-            keywords: [category, ...parsedResponse.keywords],
+            keywords: [category, ...documentDescriptionResponse.keywords],
             url: url.url,
             date: url.date,
         };

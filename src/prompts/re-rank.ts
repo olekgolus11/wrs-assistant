@@ -16,11 +16,7 @@ export const rerankPrompt = ChatPromptTemplate.fromMessages([
         `Jesteś pomocnym asystentem, który ocenia, czy dany dokument jest użyteczny dla konkretnego zapytania. Odpowiedz true jeśli użyteczny, false jeśli nie.`,
     ],
     [
-        "system",
-        "Musisz odpowiedzieć w języku polskim w następującym formacie:\n{format}.",
-    ],
-    [
-        "system",
+        "user",
         `Pytanie: {question},
         Dokument: {document}`,
     ],

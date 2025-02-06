@@ -25,6 +25,5 @@ export const contextPrompt = ChatPromptTemplate.fromMessages([
         "system",
         "Zaproponuj kilka zapytań do bazy wektorowej, które mogą pomóc w znalezieniu odpowiedzi. Jeśli dostępne, skorzytaj z sugestii: {improvementSuggestions}",
     ],
-    ["system", "Musisz odpowiedzieć w następującym formacie:\n{format}"],
     ["user", "Pytanie: {question}"],
 ]);
